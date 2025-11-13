@@ -11,8 +11,19 @@ class Madgwick {
     public:
 
         //State variables: Will eventually contain one Quaternion for each finger
-        Quaternion iFinger; //index Finger
-        Madgwick(); //Constructor
+
+        //Index Finger is the initial one we will work on 
+        //before we implement more than one anyway
+        Quaternion iFinger; 
+        /* In future, these will be added
+        Quaternion mFinger;
+        Quaternion rFinger;
+        Quaternion pFinger;
+        Quaternion thum;
+        Quaternion rist;
+        */
+        //Constructor (doesnt do much)
+        Madgwick(); 
         
 
 
