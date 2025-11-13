@@ -2,6 +2,17 @@
 #include <Wire.h>
 
 const int MPU_ADDR = 0x68;
+// Function declarations
+//Reads the byte from a piece of memory over I2C
+byte readRegister(uint8_t reg) {
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(reg);
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU_ADDR, 1, true);
+  return Wire.read();
+}
+
+
 
 void setup() {
   Serial.begin(115200);
@@ -13,7 +24,27 @@ void setup() {
   Wire.write(0); //Write to 0 to wake up the sensor
   Wire.endTransmission(true);
 
-}
+  //Let's find the gyroscope and accelerometer ranges
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x1A);
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU_ADDR, 3, true);
+  byte cfig = Wire.read();
+  byte gcfig = Wire.read();
+  byte acfig = Wire.read();
+
+  Serial.println("MPU-6050 Configuration Bytes:");
+  Serial.print("  CONFIG     (0x1A): 0x");
+  Serial.println(cfig, HEX);
+
+  Serial.print("  GYRO CONFIG (0x1B): 0x");
+  Serial.println(gcfig, HEX);
+
+  Serial.print("  ACCEL CONFIG (0x1C): 0x");
+  Serial.println(acfig, HEX);
+
+};
+
 
 void loop() {
   Wire.beginTransmission(MPU_ADDR);
@@ -28,6 +59,21 @@ void loop() {
   int16_t gx = Wire.read() << 8 | Wire.read();
   int16_t gy = Wire.read() << 8 | Wire.read();
   int16_t gz = Wire.read() << 8 | Wire.read();
+  
+  byte gcfig = readRegister(0x1B);
+  byte acfig = readRegister(0x1C);
+  byte cnfig = readRegister(0x1A);
+  Serial.println("MPU-6050 Configuration Bytes:");
+  Serial.print("  CONFIG     (0x1A): 0x");
+  Serial.println(cnfig, HEX);
+
+  Serial.print("  GYRO CONFIG (0x1B): 0x");
+  Serial.println(gcfig, HEX);
+
+  Serial.print("  ACCEL CONFIG (0x1C): 0x");
+  Serial.println(acfig, HEX);
+
+
 
   Serial.print("Accel: ");
   Serial.print(ax); Serial.print(" ");
@@ -39,23 +85,4 @@ void loop() {
 
   delay(500);
 
-}
-
-
-
-/*// put function declarations here:
-int myFunction(int, int);
-
-void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
-}
-
-void loop() {
-  // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
-}*/
+};

@@ -11,10 +11,10 @@ void Quaternion::normalize() {
 
 //Takes this quaternion and multiplies it by a new quaternion
 void Quaternion::qMultiply(const Quaternion& dQ) {
-    float newW = dQ.w*w - dQ.x*x - dQ.y*y - dQ.z*z;
-    float newX = dQ.w*x + dQ.x*w + dQ.y*z - dQ.z*y;
-    float newY = dQ.w*y - dQ.x*z + dQ.y*w + dQ.z*x;
-    float newZ = dQ.w*z + dQ.x*y - dQ.y*x + dQ.z*w;
+    float newW = w*dQ.w - x*dQ.x - y*dQ.y - z*dQ.z;
+    float newX = w*dQ.x + x*dQ.w + y*dQ.z - z*dQ.y;
+    float newY = w*dQ.y - x*dQ.z + y*dQ.w + z*dQ.x;
+    float newZ = w*dQ.z + x*dQ.y - y*dQ.x + z*dQ.w;
 
     w = newW;
     x = newX;
@@ -26,4 +26,21 @@ void Quaternion::qMultiply(const Quaternion& dQ) {
     So, q1 * q2 rotates from origin by q1, then rotates from that point by q2.
     Not commutative!
     */
+}
+
+//Scales the quat by a scalar
+void Quaternion::qScale(const float scaleFactor) {
+    w = scaleFactor * w;
+    x = scaleFactor * x;
+    y = scaleFactor * y;
+    z = scaleFactor * z;
+
+}
+
+//It's just vector addition but for quaternions
+void Quaternion::qAdd(const Quaternion& deltaQuaternion) {
+    w = w + deltaQuaternion.w;
+    x = x + deltaQuaternion.x;
+    y = y + deltaQuaternion.y;
+    z = z + deltaQuaternion.z;
 }
