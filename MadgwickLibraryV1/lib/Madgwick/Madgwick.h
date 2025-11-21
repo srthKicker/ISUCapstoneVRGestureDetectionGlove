@@ -12,7 +12,7 @@ class Madgwick {
 
         //State variables: Will eventually contain one Quaternion for each finger
 
-        //Will eventually have one float for last time polled for each finger
+        //Will eventually have one ulong for last time polled for each finger
         //Thus, each finger will be able to track the time delta between each poll
         ulong iFLastPollTime;
         //eventually all will be implemented
