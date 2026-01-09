@@ -1,7 +1,7 @@
 #include "Madgwick.h"
 #include "Quaternion.h"
 
-//Calculates the constants before runtime to avoid unecessary calculations
+//Stores the constants before runtime to avoid unecessary calculations
 const float pi = 3.1415927f; //It's just pi what do you want, it'll be good for 32 bit floats
 
 const float gyroScale = 131.0f; //Changes based on precision
@@ -14,7 +14,7 @@ const float invAccScale = 1.0f/accScale;
 
 //Constructor
 Madgwick::Madgwick() {
-    //Set the last polled time for all the fingers (just  using iF for now)
+    //Set the last polled time for all the fingers (just  using index finger for now)
     iFLastPollTime = micros();
     mFLastPollTime = micros();
     rFLastPollTime = micros();
