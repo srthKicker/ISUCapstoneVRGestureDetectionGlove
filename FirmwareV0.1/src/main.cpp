@@ -2,15 +2,14 @@
 #include <Wire.h>
 #include <I2Cdev.h>
 #include <MPU6050.h>
-#include <Quaternion.h>
 
 /*
 Constant declarations
 */
-const int MPU_ADDR = 0x68; //Only 2 I2C addresses available 
+const uint8_t MPU_ADDR = 0x68; //Only 2 I2C addresses available 
 const int SDA_Pin = 21; //Currently on default I2C pins
 const int SCL_Pin = 22;
-const int I2CBusSpeed = 400000; // Start with 100kHz, could go to 400kHz if bottlenecking is an issue
+const int I2CBusSpeed = 100000; // Start with 100kHz, could go to 400kHz if bottlenecking is an issue
 /*
 Variable declarations
 */
@@ -25,19 +24,26 @@ byte readRegister(uint8_t reg) {
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(reg);
   Wire.endTransmission(false);
-  Wire.requestFrom(MPU_ADDR, 1, true);
+  Wire.requestFrom((uint8_t)MPU_ADDR, (uint8_t)1, (bool)true);
   return Wire.read();
 }
 
 /*
-  Setup will initialize communication, 
+  Setup will initialize communication
 */
 void setup() {
   Serial.begin(115200);
   Wire.begin(SDA_Pin, SCL_Pin);
   Wire.setClock(I2CBusSpeed); //Sets the clock rate
-  mpu.initialize();
+  /* Wake up the 6050
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x6B);
+  Wire.write(0);
+  Wire.endTransmission(true);
+  */
 
+  mpu.initialize();
+  mpu.setSleepEnabled(false);
   //Tests the connection
   if(mpu.testConnection()){
     Serial.println("MPU initialized successfully!");
