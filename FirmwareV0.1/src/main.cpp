@@ -88,5 +88,5 @@ void loop() {
 Serial.printf("Roll: %6f, Pitch: %6f, TimeBetween: %10d\n", madg.getRoll(), madg.getPitch(), (currentTime-lastTime));
   //Yaw only works with magnetometer
   //Serial.printf("Roll: %6f, Pitch: %6f, Yaw: %6f, TimeBetween: %6f\n", madg.getRoll(), madg.getPitch(), madg.getYaw(), (currentTime-lastTime));
-  //delay(1000/madgRate); Removed to see how fast the ESP32 can go
+  delay(1000/madgRate);
 }
