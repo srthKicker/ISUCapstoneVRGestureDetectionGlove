@@ -1,4 +1,4 @@
 idf_component_register(
-    SRCS "main.cpp"
+    SRCS "SethMPU6050.cpp"
     INCLUDE_DIRS "."
 )
