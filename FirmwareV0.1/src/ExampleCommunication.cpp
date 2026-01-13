@@ -1,4 +1,4 @@
-/*#include <Arduino.h>
+#include <Arduino.h>
 #include <Wire.h>
 
 const int MPU_ADDR = 0x68;
@@ -17,7 +17,6 @@ byte readRegister(uint8_t reg) {
 void setup() {
   Serial.begin(115200);
   Wire.begin(21,22);
-
   //To initialize the mpu6050
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x6B); //Power management
@@ -85,4 +84,4 @@ void loop() {
 
   delay(500);
 
-};*/
+};
