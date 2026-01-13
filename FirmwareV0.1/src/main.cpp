@@ -13,6 +13,9 @@ const int I2CBusSpeed = 100000; // Start with 100kHz, could go to 400kHz if bott
 const uint8_t powerReg = 0x6B;
 const uint8_t accStart = 0x3B;
 const uint8_t gyroStart = 0x43;
+const float accSensitivityFactor = 16384.0f;
+const float gyroSensitivityFactor = 131.0f;
+const float madgRate = 10.0f;
 
   /*
   Variable declarations
@@ -59,17 +62,21 @@ void setup() {
   Wire.setClock(I2CBusSpeed); //Sets the clock rate
   //Wake up the IMU MPU6050
   writeRegister(MPU_ADDR, powerReg, 0);
+  madg.begin(madgRate);
 }
 
 void loop() {
-  int16_t ax = readInt16(MPU_ADDR, accStart);
-  int16_t ay = readInt16(MPU_ADDR, accStart+2);
-  int16_t az = readInt16(MPU_ADDR, accStart+4);
-  int16_t gx = readInt16(MPU_ADDR, gyroStart);
-  int16_t gy = readInt16(MPU_ADDR, gyroStart+2);
-  int16_t gz = readInt16(MPU_ADDR, gyroStart+4);
+  float ax = readInt16(MPU_ADDR, accStart) / accSensitivityFactor;
+  float ay = readInt16(MPU_ADDR, accStart+2) / accSensitivityFactor;
+  float az = readInt16(MPU_ADDR, accStart+4) / accSensitivityFactor;
+  float gx = (readInt16(MPU_ADDR, gyroStart) / gyroSensitivityFactor) * DEG_TO_RAD;
+  float gy = (readInt16(MPU_ADDR, gyroStart+2) / gyroSensitivityFactor) * DEG_TO_RAD;
+  float gz = (readInt16(MPU_ADDR, gyroStart+4) / gyroSensitivityFactor) * DEG_TO_RAD;
 
-  Serial.printf("\n\nAccel: ax=%6d  ay=%6d  az=%6d\n", ax, ay, az);
-  Serial.printf("Gyro : gx=%6d  gy=%6d  gz=%6d\n", gx, gy, gz);
-  delay(500);
+  Serial.printf("\n\nAccel: ax=%6.3f  ay=%6.3f  az=%6.3f\n", ax, ay, az);
+  Serial.printf("Gyro : gx=%6.3f  gy=%6.3f  gz=%6.3f\n\n", gx, gy, gz);
+
+  madg.updateIMU(gx,gy,gz,ax,ay,az);
+  Serial.printf("Roll: %6f, Pitch: %6f, Yaw: %6f\n", madg.getRoll(), madg.getPitch(), madg.getYaw());
+  delay(1000/madgRate);
 }
