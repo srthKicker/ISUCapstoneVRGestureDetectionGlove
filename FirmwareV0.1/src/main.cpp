@@ -47,6 +47,7 @@ void writeRegister(int addr, uint8_t reg, uint8_t value){
   Wire.beginTransmission(addr);
   Wire.write(reg);
   Wire.write(value);
+  Wire.endTransmission(true);
 }
 
   /*
@@ -68,7 +69,7 @@ void loop() {
   int16_t gy = readInt16(MPU_ADDR, gyroStart+2);
   int16_t gz = readInt16(MPU_ADDR, gyroStart+4);
 
-  Serial.printf("Accel: ax=%6d  ay=%6d  az=%6d\n", ax, ay, az);
+  Serial.printf("\n\nAccel: ax=%6d  ay=%6d  az=%6d\n", ax, ay, az);
   Serial.printf("Gyro : gx=%6d  gy=%6d  gz=%6d\n", gx, gy, gz);
-
+  delay(500);
 }

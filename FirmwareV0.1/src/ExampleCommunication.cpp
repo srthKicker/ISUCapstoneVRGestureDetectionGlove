@@ -1,4 +1,4 @@
-#include <Arduino.h>
+/*#include <Arduino.h>
 #include <Wire.h>
 
 const int MPU_ADDR = 0x68;
@@ -84,4 +84,4 @@ void loop() {
 
   delay(500);
 
-};
+};*/
