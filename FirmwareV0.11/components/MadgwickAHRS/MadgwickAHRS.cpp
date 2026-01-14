@@ -45,7 +45,7 @@ Madgwick::Madgwick() {
 	//invSampleFreq = 1.0f / sampleFreqDef;
 	anglesComputed = 0;
 }
-
+//For 6 axis, use updateIMU
 void Madgwick::update(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz, unsigned long currentTime, unsigned long lastTime) { 
 	float invSampleFreq = (currentTime-lastTime)/1000.0f;
 	float recipNorm;
@@ -55,11 +55,10 @@ void Madgwick::update(float gx, float gy, float gz, float ax, float ay, float az
 	float _2q0mx, _2q0my, _2q0mz, _2q1mx, _2bx, _2bz, _4bx, _4bz, _2q0, _2q1, _2q2, _2q3, _2q0q2, _2q2q3, q0q0, q0q1, q0q2, q0q3, q1q1, q1q2, q1q3, q2q2, q2q3, q3q3;
 
 	// Use IMU algorithm if magnetometer measurement invalid (avoids NaN in magnetometer normalisation)
-	//Seth Kiker Jan 2026: Removed temporarily to stop errors, will replace.
-	/*if((mx == 0.0f) && (my == 0.0f) && (mz == 0.0f)) {
-		updateIMU(gx, gy, gz, ax, ay, az);
+	if((mx == 0.0f) && (my == 0.0f) && (mz == 0.0f)) {
+		updateIMU(gx, gy, gz, ax, ay, az, currentTime, lastTime);
 		return;
-	} */ // Seth Kiker Jan 2026 
+	} 
 
 	// Convert gyroscope degrees/sec to radians/sec
 	gx *= 0.0174533f;
