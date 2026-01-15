@@ -1,5 +1,5 @@
 This firmware is designed for data collection of user gestures. 
-
+This however is now OBSOLETE. Due to FreeRTOS requirements, PlatformIO has been abandoned.
 
 TO-DO:
     Set up MPU6050 version of software (I2C, DMP on the 6050)
