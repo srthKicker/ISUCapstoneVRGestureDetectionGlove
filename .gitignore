@@ -1,0 +1,17 @@
+# ESP-IDF / CMake build output
+build/
+DataCollection/build/
+
+# Ninja / CMake
+*.ninja
+.ninja_log
+CMakeCache.txt
+CMakeFiles/
+
+# ESP-IDF generated
+sdkconfig
+sdkconfig.old
+compile_commands.json
+
+# VSCode
+.vscode/
