@@ -2,6 +2,8 @@ Initial test of FreeRTOS on the ESP32 board.
 
 To compile: idf.py build
 To flash to board: idf.py flash
+To rebuild (say you change some CMakeLists.txt or something)
+idf.py reconfigure
 
 Sorry, i don't know if there is a GUI option here
 

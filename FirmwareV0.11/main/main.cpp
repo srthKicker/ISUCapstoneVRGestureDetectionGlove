@@ -2,18 +2,26 @@
 #include "freertos/task.h"
 #include "driver/i2c.h"
 #include "bhi360.h"
-#include "Bosch_Shuttle3_BHI360.fw.h"  
+#include "Bosch_Shuttle3_BHI360.fw.h"
+#include "bhi360_i2c.h"
 
 
-#define BHI360_I2C_INTF 1 //Tell driver to use SPI or I2C
+//These are the virtual sensor settings: (Page 103-104 of datasheet)
+//Rotation vector REQUIRES magnetometer BMM150/350, but has accuracy field
+//Game rotation vector does not have accuracy field (zeroed out but still sent) does not need magnetometer
+//Add one to each value to get "wakeup" version, higher latency, bad for our project.
+#define BHI360_SENSORID_RV 34 //Rotation vector setting 
+#define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
 // Firmware 
-/*extern const uint8_t Bosch_Shuttle3_BHI360_fw[];
-extern const uint32_t Bosch_Shuttle3_BHI360_fw_len; */
 extern const unsigned char bhi360_firmware_image[]; 
 extern const unsigned int bhi360_firmware_image_len;
+//Addresses and Registers
+const uint8_t SensorAddress = 0x28; //Default for BHI360, change for I2C multiplexer when that gets added
 
-static void rot_vec_cb(const struct bhi360_fifo_parsedata_info *info, void *priv) {
-    if (info->sensor_id == BHI360_SENSORID_RV) {  // 34
+
+//Scales raw data to correct data amount.
+static void rot_vec_cb(const struct bhi360_fifo_parse_data_info *info, void *priv) {
+    if (info->sensor_id == BHI360_SENSORID_GV) {  // 34
         int16_t *q_raw = (int16_t *)info->data_ptr;
         float q[4] = {
             q_raw[0] / 16384.0f,  // Scale factor from defs
@@ -25,17 +33,20 @@ static void rot_vec_cb(const struct bhi360_fifo_parsedata_info *info, void *priv
     }
 }
 
+
 void app_main(void) {
     struct bhi360_dev dev;
     uint8_t fifo_buf[4096];
-    
+    bhi360_intf bhi360InterfaceEnumerator = BHI360_I2C_INTERFACE;
+        
     // Start by initializing I2C connection
     //
     // i2c_param_config(I2C_NUM_0, &i2c_config);
     // i2c_driver_install(I2C_NUM_0, ...);
-    
+
     // Initialize 
-    if (bhi360_init(BHI360_I2C_INTF, bhi360_i2c_read, bhi360_i2c_write, 
+    //Still have to implement 
+    if (bhi360_init(bhi360InterfaceEnumerator, bhi360_i2c_read, bhi360_i2c_write,  
                     bhi360_delay_us, 256, NULL, &dev) != BHI360_OK) {
         printf("BHI360 init failed\n");
         return;
@@ -43,7 +54,7 @@ void app_main(void) {
     
     // Load firmware
     printf("Uploading firmware...\n");
-    if (bhi360_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image) &dev) != BHI360_OK ||
+    if (bhi360_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev) != BHI360_OK ||
         bhi360_boot_from_ram(&dev) != BHI360_OK) {
         printf("Firmware load failed\n");
         return;
