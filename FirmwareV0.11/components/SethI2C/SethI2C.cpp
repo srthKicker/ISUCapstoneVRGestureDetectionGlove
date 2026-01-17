@@ -1,29 +1,28 @@
-#include <SethMPU6050.h>
-#include <driver/i2c.h>
+#include <SethI2C.h>
 #include <stdint.h>
+
+extern "C" {
+    #include "driver/i2c.h"
+}
 
 #define SDA_0 21
 #define SCL_0 22
 #define BEGIN_DELAY_TICKS 10
 #define I2C_PORT I2C_NUM_0 //Used to determine which controller to r/w with
-#define SENSOR_DATA_SIZE_BYTES 14
-const uint8_t powerReg = 0x6B;
-const uint8_t MPU6050_POWER_ON_VALUE = 0x00;
-const uint8_t accStart = 0x3B;
-const uint8_t gyroStart = 0x43;
-const float accSensitivityFactor = 16384.0f;
-const float gyroSensitivityFactor = 131.0f;
-const float madgRate = 500.0f; //Hz rate of polling
+//const uint8_t accStart = 0x3B;
+//const uint8_t gyroStart = 0x43;
+//const float accSensitivityFactor = 16384.0f;
+//const float gyroSensitivityFactor = 131.0f;
 
-SethMPU6050::SethMPU6050(uint8_t mpuAddress){
+SethI2C::SethI2C(uint8_t mpuAddress){
     addr = mpuAddress;
 }
 //Admin/Initializing functions:
 /*
-    Powers on MPU6050
+    Powers on I2C
 */
-void SethMPU6050::connect(){
-    writeByte(powerReg, MPU6050_POWER_ON_VALUE); //Power on the MPU6050
+void SethI2C::connect(){
+    writeByte(powerReg, I2C_POWER_ON_VALUE); //Power on the I2C
 }
 
 //Write Functions
@@ -39,7 +38,7 @@ void SethMPU6050::connect(){
         Stop signal
     Do i2c_master_cmd_begin to run all commands.
 */
-bool SethMPU6050::writeByte(uint8_t regNumber, uint8_t byteToWrite){
+bool SethI2C::writeByte(uint8_t regNumber, uint8_t byteToWrite){
     i2c_cmd_handle_t cmd = i2c_cmd_link_create(); //Create queue
     //Fill queue with things to send
     i2c_master_start(cmd); //Start communication signal
@@ -53,7 +52,7 @@ bool SethMPU6050::writeByte(uint8_t regNumber, uint8_t byteToWrite){
     return outputCode == ESP_OK; //return true if it succeeded
 }
 //Same as writeByte but it writes (surprise) 2 bytes
-bool SethMPU6050::writeInt16(uint8_t regNumber, uint16_t intToWrite){
+bool SethI2C::writeInt16(uint8_t regNumber, uint16_t intToWrite){
     i2c_cmd_handle_t cmd = i2c_cmd_link_create(); //Create queue
     //Fill queue with things to send
     i2c_master_start(cmd); //Start communication signal
@@ -85,7 +84,7 @@ bool SethMPU6050::writeInt16(uint8_t regNumber, uint16_t intToWrite){
             out is a POINTER where the data read will be stored
         Stop signal
 */
-bool SethMPU6050::readByte(uint8_t regNumber, uint8_t* output){
+bool SethI2C::readByte(uint8_t regNumber, uint8_t* output){
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     //Start queue
     //Write register address
@@ -102,6 +101,22 @@ bool SethMPU6050::readByte(uint8_t regNumber, uint8_t* output){
     i2c_cmd_link_delete(cmd);
     return errorCode == ESP_OK; //true if success, false if not
 }       
+
+/**
+    Reads a bunch of bytes from the register that is specified
+    This function is used by the BHI360 drivers so do not change the
+    ordering of arguments unless driver requests a different structure.
+*/
+int8_t SethI2C::bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_ptr){
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create(); //Create queue of i2c commands
+    esp_err_t returnValue;
+
+    i2c_master_start(cmd); //start signal
+    i2c_master_write_byte(cmd, ((addr << 1) | I2C_MASTER_WRITE), true);
+    i2c_master_write_byte(cmd, regAddr,)
+
+    return returnValue;
+}
 /*
     Burst read function that will fill the sensorData array with the 
     gyroscope and acceleromenter data. (and some other garbage)
@@ -115,7 +130,4 @@ bool SethMPU6050::readByte(uint8_t regNumber, uint8_t* output){
         i2c_master_read 
 
 */
-bool SethMPU6050::readSensorData(){
-    //Write to sensorData[14], use addr for i2c address, use accStart as starting register
 
-}
