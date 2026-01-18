@@ -10,18 +10,20 @@
 //Rotation vector REQUIRES magnetometer BMM150/350, but has accuracy field
 //Game rotation vector does not have accuracy field (zeroed out but still sent) does not need magnetometer
 //Add one to each value to get "wakeup" version, higher latency, bad for our project.
+#define BHI360_VIRTUAL_SENSOR_ID 37 //Change to change virtual sensor value
 #define BHI360_SENSORID_RV 34 //Rotation vector setting 
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
-// Firmware 
+// Firmware images
 extern const unsigned char bhi360_firmware_image[]; 
-extern const unsigned int bhi360_firmware_image_len;
+extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image);
 //Addresses and Registers
 const uint8_t SensorAddress = 0x28; //Default for BHI360, change for I2C multiplexer when that gets added
 
+//Global variables
 
 //Scales raw data to correct data amount.
 static void rot_vec_cb(const struct bhi360_fifo_parse_data_info *info, void *priv) {
-    if (info->sensor_id == BHI360_SENSORID_GV) {  // 34
+    if (info->sensor_id == BHI360_VIRTUAL_SENSOR_ID) { 
         int16_t *q_raw = (int16_t *)info->data_ptr;
         float q[4] = {
             q_raw[0] / 16384.0f,  // Scale factor from defs
@@ -33,21 +35,33 @@ static void rot_vec_cb(const struct bhi360_fifo_parse_data_info *info, void *pri
     }
 }
 
-
 void app_main(void) {
-    struct bhi360_dev dev;
+    // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed.
     uint8_t fifo_buf[4096];
-    bhi360_intf bhi360InterfaceEnumerator = BHI360_I2C_INTERFACE;
-        
-    // Start by initializing I2C connection
-    //
-    // i2c_param_config(I2C_NUM_0, &i2c_config);
-    // i2c_driver_install(I2C_NUM_0, ...);
 
-    // Initialize 
-    //Still have to implement 
+    //BHI360 driver variables
+    struct bhi360_dev dev; // Device structure
+    bhi360_intf bhi360InterfaceEnumerator = BHI360_I2C_INTERFACE; // Status of interface
+    //Context for i2c functions, include port MCU will use and address of device. Eventually will change throughout usage
+    //to allow communicating with different i2c devices.
+    bhi360_cntxt_t cntxt = { .i2cPortNum = I2C_NUM_0, .i2cAddress = 0x28 }; 
+
+    //Configure I2C communication
+    i2c_config_t i2cConf = {
+    .mode = I2C_MODE_MASTER,
+    .sda_io_num = 21,      // SDA_0
+    .scl_io_num = 22,      // SCL_0
+    .sda_pullup_en = GPIO_PULLUP_ENABLE,  // Use external pull-ups in final design
+    .scl_pullup_en = GPIO_PULLUP_ENABLE,
+    .master = {.clk_speed = 100000},  // 100khz
+    .clk_flags = 0
+    };
+    ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2cConf));
+    ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, i2cConf.mode, 0, 0, 0));
+
+    // Initialize BHI360 interface
     if (bhi360_init(bhi360InterfaceEnumerator, bhi360_i2c_read, bhi360_i2c_write,  
-                    bhi360_delay_us, 256, NULL, &dev) != BHI360_OK) {
+                    bhi360_delay_us, 256, &cntxt, &dev) != BHI360_OK) {
         printf("BHI360 init failed\n");
         return;
     }
@@ -65,7 +79,7 @@ void app_main(void) {
     
     printf("BHI360 ready - polling for rotation vector...\n");
     
-    while (1) {
+    while (1) { //Superloop type function (previous is setup, this is superloop)
         bhi360_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
         vTaskDelay(pdMS_TO_TICKS(10));
     }
