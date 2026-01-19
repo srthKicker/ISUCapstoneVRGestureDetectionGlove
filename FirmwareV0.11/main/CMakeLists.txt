@@ -1,4 +1,4 @@
 idf_component_register(
-    SRCS "main.cpp" "i2c.c"
+    SRCS "main.c" "i2c.c"
     INCLUDE_DIRS "."
 )

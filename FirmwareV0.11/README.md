@@ -4,10 +4,11 @@ ESP-IDF application for Bosch BHI360 smart sensor. Loads firmware via I²C, enab
 
 
 
-# Warning will not compile unless done!
-cp components/CMakeLists.txt components/BHI360_SensorAPI/CMakeLists.txt 
-Copy the cmake lists from the components directory into the sensorAPI directory
-I dont know how to get GIT to do this for me, it 
+#Note for Seth
+# the golden command for seth $$$$ :-P $$$$
+source ~/esp/esp-idf/export.sh 
+then idf.py works in my terminal :D
+
 
 
 
