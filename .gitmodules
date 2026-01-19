@@ -1,3 +1,0 @@
-[submodule "FirmwareV0.11/components/BHI360_SensorAPI"]
-	path = FirmwareV0.11/components/BHI360_SensorAPI
-	url = https://github.com/boschsensortec/BHI360_SensorAPI
