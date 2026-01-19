@@ -1,10 +1,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_log.h"
 #include "driver/i2c.h"
 #include "bhi360.h"
+#include "bhi360_defs.h"
 #include "Bosch_Shuttle3_BHI360.fw.h"
 #include "bhi360_i2c.h"
-
+#include "stdint.h"
 
 //These are the virtual sensor settings: (Page 103-104 of datasheet)
 //Rotation vector REQUIRES magnetometer BMM150/350, but has accuracy field
@@ -15,7 +17,7 @@
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
 // Firmware images
 extern const unsigned char bhi360_firmware_image[]; 
-extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image);
+//extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
 //Addresses and Registers
 const uint8_t SensorAddress = 0x28; //Default for BHI360, change for I2C multiplexer when that gets added
 
@@ -41,10 +43,10 @@ void app_main(void) {
 
     //BHI360 driver variables
     struct bhi360_dev dev; // Device structure
-    bhi360_intf bhi360InterfaceEnumerator = BHI360_I2C_INTERFACE; // Status of interface
+    enum bhi360_intf intf = BHI360_I2C_INTERFACE;
     //Context for i2c functions, include port MCU will use and address of device. Eventually will change throughout usage
     //to allow communicating with different i2c devices.
-    bhi360_cntxt_t cntxt = { .i2cPortNum = I2C_NUM_0, .i2cAddress = 0x28 }; 
+    bhi360_cntxt_t cntxt = { .i2cPortNum = I2C_NUM_0, .i2cAddress = SensorAddress }; 
 
     //Configure I2C communication
     i2c_config_t i2cConf = {
@@ -60,7 +62,7 @@ void app_main(void) {
     ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, i2cConf.mode, 0, 0, 0));
 
     // Initialize BHI360 interface
-    if (bhi360_init(bhi360InterfaceEnumerator, bhi360_i2c_read, bhi360_i2c_write,  
+    if (bhi360_init(intf, bhi360_i2c_read, bhi360_i2c_write,  
                     bhi360_delay_us, 256, &cntxt, &dev) != BHI360_OK) {
         printf("BHI360 init failed\n");
         return;
@@ -82,5 +84,6 @@ void app_main(void) {
     while (1) { //Superloop type function (previous is setup, this is superloop)
         bhi360_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
         vTaskDelay(pdMS_TO_TICKS(10));
+
     }
 }
