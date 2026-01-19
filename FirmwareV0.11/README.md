@@ -2,6 +2,16 @@ BHI360 ESP32 Driver (ESP-IDF)
 ESP-IDF application for Bosch BHI360 smart sensor. Loads firmware via I²C, enables Game Rotation Vector (quaternion output), and polls/parses FIFO data. Prints unit quaternions via UART at ~100 Hz.
 ​
 
+
+
+# Warning will not compile unless done!
+cp components/CMakeLists.txt components/BHI360_SensorAPI/CMakeLists.txt 
+Copy the cmake lists from the components directory into the sensorAPI directory
+I dont know how to get GIT to do this for me, it 
+
+
+
+
 Hardware Setup
 ESP32 GPIO21 → BHI360 SDA (0x28, 100 kHz, <10cm wires)
 ESP32 GPIO22 → BHI360 SCL
