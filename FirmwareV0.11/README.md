@@ -4,8 +4,8 @@ ESP-IDF application for Bosch BHI360 smart sensor. Loads firmware via I²C, enab
 
 
 
-#Note for Seth
-# the golden command for seth $$$$ :-P $$$$
+#Note for compiling
+the golden command for making idf.py work
 source ~/esp/esp-idf/export.sh 
 then idf.py works in my terminal :D
 
