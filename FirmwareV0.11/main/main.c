@@ -2,7 +2,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "driver/i2c.h"
-#include "bhi360.h"
+#include "bhi3.h"
 #include "Bosch_Shuttle3_BHI360.fw.h"
 #include "bhi360_i2c.h"
 #include "stdint.h"
