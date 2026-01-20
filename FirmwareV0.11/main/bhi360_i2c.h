@@ -1,6 +1,6 @@
-#ifndef I2C_H
-#define I2C_H
-#include "bhi360.h"  // For function pointer types
+#ifndef BHI360_I2C_H
+#define BHI360_I2C_H
+#include "bhi3.h"  // For function pointer types
 
 /**
  * Simple header file for I2C functions that we want to use in main
@@ -23,5 +23,5 @@ typedef struct bhi360_cntxt{
     uint8_t i2cAddress;
 
 } bhi360_cntxt_t;
-#endif
+#endif //BHI360_I2C_H
 //intf_ptr

@@ -23,7 +23,7 @@ const uint8_t SensorAddress = 0x28; //Default for BHI360, change for I2C multipl
 //Global variables
 
 //Scales raw data to correct data amount.
-static void rot_vec_cb(const struct bhi360_fifo_parse_data_info *info, void *priv) {
+static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv) {
     if (info->sensor_id == BHI360_VIRTUAL_SENSOR_ID) { 
         int16_t *q_raw = (int16_t *)info->data_ptr;
         float q[4] = {
@@ -41,8 +41,8 @@ void app_main(void) {
     uint8_t fifo_buf[4096];
 
     //BHI360 driver variables
-    struct bhi360_dev dev; // Device structure
-    enum bhi360_intf intf = BHI360_I2C_INTERFACE;
+    struct bhy2_dev dev; // Device structure
+    enum bhy2_intf intf = BHY2_I2C_INTERFACE; //Communication protocol
     //Context for i2c functions, include port MCU will use and address of device. Eventually will change throughout usage
     //to allow communicating with different i2c devices.
     bhi360_cntxt_t cntxt = { .i2cPortNum = I2C_NUM_0, .i2cAddress = SensorAddress }; 
@@ -62,15 +62,15 @@ void app_main(void) {
 
     // Initialize BHI360 interface
     if (bhi360_init(intf, bhi360_i2c_read, bhi360_i2c_write,  
-                    bhi360_delay_us, 256, &cntxt, &dev) != BHI360_OK) {
+                    bhi360_delay_us, 256, &cntxt, &dev) != BHY2_OK) {
         printf("BHI360 init failed\n");
         return;
     }
     
     // Load firmware
     printf("Uploading firmware...\n");
-    if (bhi360_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev) != BHI360_OK ||
-        bhi360_boot_from_ram(&dev) != BHI360_OK) {
+    if (bhi360_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev) != BHY2_OK ||
+        bhi360_boot_from_ram(&dev) != BHY2_OK) {
         printf("Firmware load failed\n");
         return;
     }
