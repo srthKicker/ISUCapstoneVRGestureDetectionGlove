@@ -89,7 +89,7 @@ void bhi360_delay_us(uint32_t period, void *intf_ptr) {
 
     OBSOLETE. Only for reference
 */
-bool writeByte(uint8_t regNumber, uint8_t byteToWrite){
+/**bool writeByte(uint8_t regNumber, uint8_t byteToWrite){
     return false; //This function only for reference
     i2c_cmd_handle_t cmd = i2c_cmd_link_create(); //Create queue
     //Fill queue with things to send
@@ -103,7 +103,7 @@ bool writeByte(uint8_t regNumber, uint8_t byteToWrite){
     i2c_cmd_link_delete(cmd);
    // return outputCode == ESP_OK; //return true if it succeeded
    return false; //This function only for reference
-}
+}*/
 
 //Read functions
 /*
@@ -123,7 +123,7 @@ bool writeByte(uint8_t regNumber, uint8_t byteToWrite){
 
         OBSOLETE. ONLY FOR REFERENCE
 */
-bool readByte(uint8_t regNumber, uint8_t* output){
+/**bool readByte(uint8_t regNumber, uint8_t* output){
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     //Start queue
     //Write register address
@@ -139,7 +139,7 @@ bool readByte(uint8_t regNumber, uint8_t* output){
     esp_err_t errorCode = i2c_master_cmd_begin(I2C_NUM_0, cmd, 10);
     i2c_cmd_link_delete(cmd);
     return errorCode == ESP_OK; //true if success, false if not
-}       
+}       */
 
 
 

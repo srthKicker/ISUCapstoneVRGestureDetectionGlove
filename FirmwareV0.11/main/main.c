@@ -19,6 +19,8 @@ extern const unsigned char bhi360_firmware_image[];
 //extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
 //Addresses and Registers
 const uint8_t SensorAddress = 0x28; //Default for BHI360, change for I2C multiplexer when that gets added
+const float SensorSampleRate = 100.0f; //sample rate in HZ I think
+const uint32_t SensorLatency = 0; //Something with buffering and stuff, ill explain later
 
 //Global variables
 
@@ -37,17 +39,23 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
 }
 
 void app_main(void) {
+    /**
+     * Variables needed for function
+     */
     // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed.
     uint8_t fifo_buf[4096];
-
     //BHI360 driver variables
     struct bhy2_dev dev; // Device structure
     enum bhy2_intf intf = BHY2_I2C_INTERFACE; //Communication protocol
     //Context for i2c functions, include port MCU will use and address of device. Eventually will change throughout usage
     //to allow communicating with different i2c devices.
     bhi360_cntxt_t cntxt = { .i2cPortNum = I2C_NUM_0, .i2cAddress = SensorAddress }; 
+    
+    struct bhy2_virt_sensor_conf virtualSensorConf;
 
-    //Configure I2C communication
+    /**
+     * Configure I2C communication
+     * */
     i2c_config_t i2cConf = {
     .mode = I2C_MODE_MASTER,
     .sda_io_num = 21,      // SDA_0
@@ -60,29 +68,43 @@ void app_main(void) {
     ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2cConf));
     ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, i2cConf.mode, 0, 0, 0));
 
-    // Initialize BHI360 interface
-    if (bhi360_init(intf, bhi360_i2c_read, bhi360_i2c_write,  
+    /**
+     * Initialize BHI360 interface
+     * */
+    if (bhy2_init(intf, bhi360_i2c_read, bhi360_i2c_write,  
                     bhi360_delay_us, 256, &cntxt, &dev) != BHY2_OK) {
         printf("BHI360 init failed\n");
         return;
     }
     
-    // Load firmware
+    /**
+     * Load firmware and boot from RAM
+     * */
     printf("Uploading firmware...\n");
-    if (bhi360_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev) != BHY2_OK ||
-        bhi360_boot_from_ram(&dev) != BHY2_OK) {
+    if (bhy2_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev) != BHY2_OK ||
+        bhy2_boot_from_ram(&dev) != BHY2_OK) { //if either upload or boot fails print error
         printf("Firmware load failed\n");
         return;
     }
+    /**
+     * Update virtual sensor list & 
+     * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
+     * */
+    bhy2_update_virtual_sensor_list(&dev);
+    bhy2_register_fifo_parse_callback(BHI360_VIRTUAL_SENSOR_ID, rot_vec_cb, NULL, &dev);
     
-    bhi360_update_virtual_sensor_list(&dev);
-    bhi360_register_fifo_parse_callback(BHI360_SENSORID_RV, rot_vec_cb, NULL, &dev);
     
-    printf("BHI360 ready - polling for rotation vector...\n");
     
-    while (1) { //Superloop type function (previous is setup, this is superloop)
-        bhi360_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
-        vTaskDelay(pdMS_TO_TICKS(10));
+    /**
+     * Update virtual sensor list & 
+     * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
+     * */
+    bhy2_set_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, SensorSampleRate, SensorLatency, &dev);
+
+     printf("BHI360 ready - polling for rotation vector...\n");
+    while (1) { //Superloop type function (previous code is effectively setup, this is superloop)
+        bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
+        vTaskDelay(pdMS_TO_TICKS(100));
 
     }
 }
