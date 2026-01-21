@@ -1,0 +1,18 @@
+{
+  "name": "ARGHV0.1",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "extensions": [
+    "espressif.esp-idf-extension",
+    "ms-vscode.cpptools"
+  ],
+  "settings": {
+    "idf.espIdfPath": "/opt/esp/idf",
+    "idf.toolsPath": "/opt/esp",
+    "idf.pythonInstallPath": "/usr/bin/python3"
+  },
+  "runArgs": [
+    "--privileged"
+  ]
+}

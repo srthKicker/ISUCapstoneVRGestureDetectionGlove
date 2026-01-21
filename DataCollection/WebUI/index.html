@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gesture Data Collection UI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        
+        .section h2 {
+            color: #667eea;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        
+        button {
+            padding: 12px 24px;
+            font-size: 14px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+        
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .btn-danger:hover:not(:disabled) {
+            background: #c0392b;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .status-inactive {
+            background: #ecf0f1;
+            color: #7f8c8d;
+        }
+        
+        .status-active {
+            background: #2ecc71;
+            color: white;
+            animation: pulse 1s infinite;
+        }
+        
+        .status-recording {
+            background: #e74c3c;
+            color: white;
+            animation: pulse 0.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .gesture-display {
+            font-size: 48px;
+            text-align: center;
+            padding: 30px;
+            background: white;
+            border-radius: 8px;
+            margin: 20px 0;
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .gesture-display img {
+            max-width: 100%;
+            max-height: 250px;
+            object-fit: contain;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .serial-select {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 2px solid #667eea;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .counter {
+            text-align: center;
+            font-size: 18px;
+            color: #667eea;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .data-log {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #333;
+            margin: 10px 0;
+        }
+        
+        .data-log-entry {
+            padding: 2px 0;
+            border-bottom: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Gesture Data Collection</h1>
+        
+        <div class="section">
+            <h2>Serial Connection</h2>
+            <select id="portSelect" class="serial-select">
+                <option value="">Select Serial Port</option>
+            </select>
+            <button id="refreshBtn" class="btn-primary" onclick="refreshPorts()" style="padding: 8px 16px; font-size: 12px; margin: 10px 5px 10px 0;">🔄 Refresh</button>
+            <button id="connectBtn" class="btn-primary" onclick="connectSerial()">Connect</button>
+            <div class="status status-inactive" id="connectionStatus">Disconnected</div>
+        </div>
+        
+        <div class="section">
+            <h2>Session Control</h2>
+            <div class="controls">
+                <button id="startBtn" class="btn-primary" onclick="startSession()" disabled>Start Session</button>
+                <button id="stopBtn" class="btn-danger" onclick="stopSession()" disabled>Stop Session</button>
+            </div>
+            <div class="counter" id="gestureCounter">Gestures: 0/0</div>
+        </div>
+        
+        <div class="section">
+            <h2>Current Gesture</h2>
+            <div class="gesture-display" id="gestureDisplay">Waiting...</div>
+            <div class="status status-inactive" id="recordingStatus">Ready</div>
+        </div>
+        
+        <div class="section">
+            <h2>Serial Data Log</h2>
+            <div class="data-log" id="dataLog"></div>
+            <button id="downloadBtn" class="btn-primary" onclick="downloadData()" style="width: 100%;">📥 Download Session Data</button>
+        </div>
+    </div>
+
+    <script>
+        const GESTURES = ['Base', 'Gesture1', 'Gesture2', 'Gesture3', 'Gesture4'];
+        
+        function getGestureImagePath(gestureName) {
+            return `./${gestureName}.jpg`;
+        }
+        
+        let port = null;
+        let isConnected = false;
+        let isSessionActive = false;
+        let currentGestureIndex = 0;
+        let gestureSequence = [];
+        let recordingTimeout = null;
+        let sessionData = [];
+        let currentGestureData = [];
+        
+        // Initialize port list on page load
+        window.addEventListener('load', async () => {
+            await refreshPorts();
+        });
+        
+        async function refreshPorts() {
+            try {
+                const ports = await navigator.serial.getPorts();
+                const portSelect = document.getElementById('portSelect');
+                const currentSelection = portSelect.value;
+                
+                // Clear existing options except the first one
+                while (portSelect.options.length > 1) {
+                    portSelect.remove(1);
+                }
+                
+                if (ports.length === 0) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'No ports found';
+                    option.disabled = true;
+                    portSelect.appendChild(option);
+                } else {
+                    ports.forEach((port, index) => {
+                        const option = document.createElement('option');
+                        option.value = index;
+                        option.textContent = `Port ${index + 1} (USB)`;
+                        portSelect.appendChild(option);
+                    });
+                }
+                
+                // Restore previous selection if it still exists
+                portSelect.value = currentSelection;
+            } catch (err) {
+                console.error('Error enumerating ports:', err);
+            }
+        }
+        
+        async function connectSerial() {
+            try {
+                const portSelect = document.getElementById('portSelect');
+                const selectedIndex = parseInt(portSelect.value);
+                
+                if (isNaN(selectedIndex)) {
+                    alert('Please select a serial port');
+                    return;
+                }
+                
+                const ports = await navigator.serial.getPorts();
+                if (selectedIndex >= ports.length) {
+                    alert('Selected port is no longer available');
+                    return;
+                }
+                
+                port = ports[selectedIndex];
+                await port.open({ baudRate: 115200 });
+                isConnected = true;
+                updateConnectionStatus(true);
+                readSerialData();
+            } catch (err) {
+                console.error('Connection failed:', err);
+                alert('Failed to connect: ' + err.message);
+                updateConnectionStatus(false);
+            }
+        }
+        
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connectionStatus');
+            const startBtn = document.getElementById('startBtn');
+            if (connected) {
+                status.textContent = '✓ Connected';
+                status.className = 'status status-active';
+                startBtn.disabled = false;
+            } else {
+                status.textContent = '✗ Disconnected';
+                status.className = 'status status-inactive';
+                startBtn.disabled = true;
+            }
+        }
+        
+        function startSession() {
+            isSessionActive = true;
+            currentGestureIndex = 0;
+            gestureSequence = generateGestureSequence(10);
+            sessionData = [];
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+            document.getElementById('dataLog').innerHTML = '';
+            nextGesture();
+        }
+        
+        function stopSession() {
+            isSessionActive = false;
+            currentGestureIndex = 0;
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('gestureDisplay').textContent = 'Session Ended';
+            document.getElementById('recordingStatus').textContent = 'Ready';
+            document.getElementById('recordingStatus').className = 'status status-inactive';
+            clearTimeout(recordingTimeout);
+        }
+        
+        function generateGestureSequence(count) {
+            const sequence = [];
+            for (let i = 0; i < count; i++) {
+                sequence.push(GESTURES[Math.floor(Math.random() * GESTURES.length)]);
+            }
+            return sequence;
+        }
+        
+        function nextGesture() {
+            if (!isSessionActive || currentGestureIndex >= gestureSequence.length) {
+                stopSession();
+                return;
+            }
+            
+            const gesture = gestureSequence[currentGestureIndex];
+            const gestureDisplay = document.getElementById('gestureDisplay');
+            gestureDisplay.innerHTML = `<img src="${getGestureImagePath(gesture)}" alt="${gesture}">`;
+            document.getElementById('gestureCounter').textContent = 
+                `Gestures: ${currentGestureIndex}/${gestureSequence.length}`;
+            
+            // Show countdown before recording starts
+            let countdown = 2;
+            const statusElement = document.getElementById('recordingStatus');
+            statusElement.textContent = `Starting in ${countdown}s...`;
+            statusElement.className = 'status status-inactive';
+            
+            const countdownInterval = setInterval(() => {
+                countdown--;
+                if (countdown > 0) {
+                    statusElement.textContent = `Starting in ${countdown}s...`;
+                } else {
+                    clearInterval(countdownInterval);
+                    startRecording(gesture);
+                }
+            }, 1000);
+        }
+        
+        function startRecording(gesture) {
+            if (!isSessionActive) return;
+            
+            const status = document.getElementById('recordingStatus');
+            status.className = 'status status-recording';
+            
+            currentGestureData = [];
+            sendToESP32(`START:${gesture}`);
+            
+            // Show countdown during recording
+            let recordingCountdown = 3;
+            status.textContent = `⏺ Recording... ${recordingCountdown}s`;
+            
+            const countdownInterval = setInterval(() => {
+                recordingCountdown--;
+                if (recordingCountdown > 0) {
+                    status.textContent = `⏺ Recording... ${recordingCountdown}s`;
+                } else {
+                    clearInterval(countdownInterval);
+                    finishRecording();
+                }
+            }, 1000);
+            
+            recordingTimeout = countdownInterval;
+        }
+        
+        function finishRecording() {
+            const status = document.getElementById('recordingStatus');
+            status.textContent = '✓ Recorded';
+            status.className = 'status status-active';
+            
+            sendToESP32('STOP');
+            
+            // Store the gesture data with label
+            if (currentGestureData.length > 0) {
+                sessionData.push({
+                    gesture: gestureSequence[currentGestureIndex],
+                    timestamp: new Date().toISOString(),
+                    data: currentGestureData
+                });
+            }
+            
+            currentGestureIndex++;
+            setTimeout(nextGesture, 1500);
+        }
+        
+        function sendToESP32(message) {
+            if (!port) return;
+            const writer = port.writable.getWriter();
+            writer.write(new TextEncoder().encode(message + '\n'));
+            writer.releaseLock();
+        }
+        
+        async function readSerialData() {
+            if (!port) return;
+            const reader = port.readable.getReader();
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    const data = new TextDecoder().decode(value);
+                    
+                    // Log to console
+                    console.log(data);
+                    
+                    // Display in UI
+                    displayDataLog(data);
+                    
+                    // Collect data during recording
+                    if (isSessionActive) {
+                        currentGestureData.push(data);
+                    }
+                }
+            } catch (err) {
+                console.error('Read error:', err);
+            }
+        }
+        
+        function displayDataLog(data) {
+            const logElement = document.getElementById('dataLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'data-log-entry';
+            entry.textContent = `[${timestamp}] ${data}`;
+            logElement.appendChild(entry);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        function downloadData() {
+            if (sessionData.length === 0) {
+                alert('No data to download. Start a session first.');
+                return;
+            }
+            
+            // Create CSV content
+            let csvContent = 'Gesture,Timestamp,Data\n';
+            sessionData.forEach(recording => {
+                const dataStr = recording.data.join(' | ').replace(/"/g, '""');
+                csvContent += `"${recording.gesture}","${recording.timestamp}","${dataStr}"\n`;
+            });
+            
+            // Create blob and download
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `gesture_data_${new Date().toISOString().slice(0, 10)}_${new Date().getTime()}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+    </script>
+</body>
+</html>
