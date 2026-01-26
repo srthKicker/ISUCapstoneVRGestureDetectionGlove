@@ -1,5 +1,4 @@
 #include <stdint.h> //data types
-#include "driver/i2c.h" //i2c functions that are old and creaky
 #include "driver/i2c_master.h" //Modern i2c functions to change over to
 #include "driver/i2c_types.h" //more modern i2c stuff to change over to
 #include "bhi360_i2c.h" //Header file we are defining

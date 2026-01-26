@@ -1,7 +1,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-//#include "driver/i2c.h"
 #include "driver/i2c_master.h"
 #include "bhi3.h"
 #include "Bosch_Shuttle3_BHI360.fw.h"
