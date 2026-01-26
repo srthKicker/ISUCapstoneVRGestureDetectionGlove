@@ -1,7 +1,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "driver/i2c.h"
+//#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 #include "bhi3.h"
 #include "Bosch_Shuttle3_BHI360.fw.h"
 #include "bhi360_i2c.h"
@@ -14,6 +15,9 @@
 #define BHI360_VIRTUAL_SENSOR_ID 37 //Change to change virtual sensor value
 #define BHI360_SENSORID_RV 34 //Rotation vector setting 
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
+//Pin numbers
+#define SDA_0 21
+#define SCL_0 22
 // Firmware images
 extern const unsigned char bhi360_firmware_image[]; 
 //extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
@@ -21,6 +25,7 @@ extern const unsigned char bhi360_firmware_image[];
 const uint8_t SensorAddress = 0x28; //Default for BHI360, change for I2C multiplexer when that gets added
 const float SensorSampleRate = 100.0f; //sample rate in HZ I think
 const uint32_t SensorLatency = 0; //Something with buffering and stuff, ill explain later
+
 
 //Global variables
 
@@ -49,14 +54,25 @@ void app_main(void) {
     enum bhy2_intf intf = BHY2_I2C_INTERFACE; //Communication protocol
     //Context for i2c functions, include port MCU will use and address of device. Eventually will change throughout usage
     //to allow communicating with different i2c devices.
-    bhi360_cntxt_t cntxt = { .i2cPortNum = I2C_NUM_0, .i2cAddress = SensorAddress }; 
-    
-    struct bhy2_virt_sensor_conf virtualSensorConf;
+
+    //Modern i2c configuration method
+    i2c_master_bus_config_t i2cBusConfig = {
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .i2c_port = I2C_NUM_0,
+        .scl_io_num = SCL_0,
+        .sda_io_num = SDA_0,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+    i2c_master_bus_handle_t busHandle;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2cBusConfig, &busHandle));
+
+    //struct bhy2_virt_sensor_conf virtualSensorConf;
 
     /**
-     * Configure I2C communication
+     * Configure I2C communication, Old and creaky
      * */
-    i2c_config_t i2cConf = {
+   /* i2c_config_t i2cConf = {
     .mode = I2C_MODE_MASTER,
     .sda_io_num = 21,      // SDA_0
     .scl_io_num = 22,      // SCL_0
@@ -64,15 +80,15 @@ void app_main(void) {
     .scl_pullup_en = GPIO_PULLUP_ENABLE,
     .master = {.clk_speed = 100000},  // 100khz
     .clk_flags = 0
-    };
-    ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2cConf));
-    ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, i2cConf.mode, 0, 0, 0));
+    }; 
+    ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2cBusConfig));
+    ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, i2cBusConfig.mode, 0, 0, 0)); */
 
     /**
      * Initialize BHI360 interface
      * */
     if (bhy2_init(intf, bhi360_i2c_read, bhi360_i2c_write,  
-                    bhi360_delay_us, 256, &cntxt, &dev) != BHY2_OK) {
+                    bhi360_delay_us, 256, &i2cBusConfig, &dev) != BHY2_OK) {
         printf("BHI360 init failed\n");
         return;
     }

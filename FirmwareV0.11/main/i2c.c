@@ -1,14 +1,54 @@
 #include <stdint.h> //data types
-#include "driver/i2c.h" //i2c functions
+#include "driver/i2c.h" //i2c functions that are old and creaky
+#include "driver/i2c_master.h" //Modern i2c functions to change over to
+#include "driver/i2c_types.h" //more modern i2c stuff to change over to
 #include "bhi360_i2c.h" //Header file we are defining
 #include <rom/ets_sys.h> //For delay function
 #include "bhi3.h" //For constants that the sensor might send over.
 
-#define SDA_0 21
-#define SCL_0 22
+//#define SDA_0 21
+//#define SCL_0 22
 //#define BEGIN_DELAY_TICKS 10
+#define I2C_TIMEOUT_MS 1000 // 1 second timeout, can change
 
+//Reads a specified number of bytes over i2c using the modern form
+//Pass a i2c_master_dev_handle_t into intf_ptr as &devHandleName
+int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_ptr)
+{
+    // Cast the interface pointer to the ESP-IDF I2C device handle
+    i2c_master_dev_handle_t i2c_dev = (i2c_master_dev_handle_t)intf_ptr;
 
+    // Perform a write-then-read transaction
+    esp_err_t ret = i2c_master_transmit_receive(
+        i2c_dev,
+        &regAddr,        // write buffer: register address
+        1,               // write size (we want to write a 1 byte register address)
+        data,            // read buffer (where we store the read data)
+        len,             // read size
+        100              // timeout in ms
+    );
+
+    return (ret == ESP_OK) ? 0 : -1;
+}
+
+//Writes a specified number of bytes over i2c using the modern form
+int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
+{
+    i2c_master_dev_handle_t i2c_dev = (i2c_master_dev_handle_t)intf_ptr;
+
+    // Build a buffer: [regAddr][data...]
+    uint8_t buf[len + 1];
+    buf[0] = regAddr;
+    memcpy(&buf[1], data, len);
+
+    esp_err_t ret = i2c_master_transmit(
+        i2c_dev,
+        buf,
+        len + 1,
+        100
+    );
+    return (ret == ESP_OK) ? 0 : -1;
+}
 
 
 /**
@@ -16,7 +56,7 @@
     This function is used by the BHI360 drivers so do not change the
     ordering of arguments unless driver requests a different structure.
 */
-int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_ptr){
+/*int8_t bhi360_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_ptr){
     i2c_cmd_handle_t cmd = i2c_cmd_link_create(); //Create queue of i2c commands
     esp_err_t returnValue;
     bhi360_cntxt_t * cntxt = (bhi360_cntxt_t*)intf_ptr;
@@ -41,13 +81,13 @@ int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_
     returnValue = i2c_master_cmd_begin((cntxt->i2cPortNum), cmd, pdMS_TO_TICKS(portTICK_PERIOD_MS));
     i2c_cmd_link_delete(cmd);
     return (returnValue == ESP_OK) ? 0 : -1; //API expects 0 for success, negative values for failure?
-}
+}*/
 /** 
     Writes bites from the data 
     Refer to comments on old simple functions for explaination of protocol
 
 */
-int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr){
+/*int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr){
     bhi360_cntxt_t * cntxt = (bhi360_cntxt_t*)intf_ptr; //Casts to our context struct to get data from it
 
 
@@ -67,11 +107,12 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
 //Simple delay function to pass to the BHI360 drivers.
 void bhi360_delay_us(uint32_t period, void *intf_ptr) {
     ets_delay_us(period);
-}
+}*/
 
 /**
  * Old simple functions, they would be good for something that doesnt do FIFO like the
  * BHI360 does Good for reference on how to I2C in ESPIDF using driver/i2c.h
+ * Too bad we aren't using it anymore
  */
 
 //Write Functions
