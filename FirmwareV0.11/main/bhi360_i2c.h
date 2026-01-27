@@ -1,6 +1,8 @@
 #ifndef BHI360_I2C_H
 #define BHI360_I2C_H
 #include "bhi3.h"  // For function pointer types
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 /**
  * Simple header file for I2C functions that we want to use in main

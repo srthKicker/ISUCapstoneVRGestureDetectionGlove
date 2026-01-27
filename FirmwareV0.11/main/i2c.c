@@ -4,7 +4,6 @@
 #include "bhi360_i2c.h" //Header file we are defining
 #include <rom/ets_sys.h> //For delay function
 #include "bhi3.h" //For constants that the sensor might send over.
-
 //#define SDA_0 21
 //#define SCL_0 22
 //#define BEGIN_DELAY_TICKS 10

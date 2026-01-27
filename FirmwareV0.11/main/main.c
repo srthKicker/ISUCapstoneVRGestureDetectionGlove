@@ -22,6 +22,8 @@
 #define I2C_TIMEOUT_US 1000 //1ms timeout for clock
 // Firmware images
 extern const unsigned char bhi360_firmware_image[]; 
+//debugging
+const char *TAG = "Testing";
 //extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
 //Addresses and Registers
 const uint8_t SensorAddress = 0x28; //Default for BHI360, change for I2C multiplexer when that gets added
@@ -46,6 +48,15 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
 }
 
 void app_main(void) {
+    printf("1. START app_main (printf OK)\n");  // No lock
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    ESP_LOGI(TAG, "2. ESP_LOG now safe");
+    //ESP_LOGI(TAG, "L0:%d L1:%d", led0Brightness, led1Brightness);
+    ESP_LOGI(TAG, "Delaying to get reliable boot..."); //debug
+    //Delay needed for boot sequence to show on serial
+    vTaskDelay(pdMS_TO_TICKS(5000)); //5s delay
+    ESP_LOGI(TAG, "Done Delaying!"); //debug
+    
     /**
      * Variables needed for function
      */
@@ -76,10 +87,12 @@ void app_main(void) {
     };
     i2c_master_bus_handle_t i2cBusHandle;
     i2c_master_dev_handle_t i2cDevHandle;
+
+    ESP_LOGI(TAG, "Declared structs!"); //debug
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2cBusConfig, &i2cBusHandle));
     //Add the device we've made here
     i2c_master_bus_add_device(i2cBusHandle,&i2cDeviceConfig,&i2cDevHandle);
-
+    ESP_LOGI(TAG, "Added i2c device"); //debug
     //We pass this context to every i2c function through intf_ptr (pass by reference)
     i2cContext_t cntxt = {
         .busConfig = i2cBusConfig,
@@ -89,6 +102,15 @@ void app_main(void) {
     };
     //struct bhy2_virt_sensor_conf virtualSensorConf;
 
+    //debug
+    ESP_LOGI(TAG, "3. Testing I2C...");
+    uint8_t chip_id[1];
+    if (bhi360_i2c_read(0x00, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
+        ESP_LOGI(TAG, "I2C OK! CHIP_ID=0x%02x (expect 0xC8)", chip_id[0]);
+    } else {
+        ESP_LOGE(TAG, "I2C FAIL - No device @0x28");
+        while(1) vTaskDelay(pdMS_TO_TICKS(1000));  // Hang safe
+    }
     /**
      * Initialize BHI360 interface
      * We pass the configuration struct to this as intf_ptr to give us context for everything
@@ -98,23 +120,24 @@ void app_main(void) {
         printf("BHI360 init failed\n");
         return;
     }
-    
+    ESP_LOGI(TAG, "Initialized bhy2_init i guess"); //debug
     /**
      * Load firmware and boot from RAM
      * */
-    printf("Uploading firmware...\n");
+    ESP_LOGI(TAG, "Uploading firmware.."); //debug
     if (bhy2_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev) != BHY2_OK ||
         bhy2_boot_from_ram(&dev) != BHY2_OK) { //if either upload or boot fails print error
-        printf("Firmware load failed\n");
+        ESP_LOGI(TAG, "Firmware load failed"); //debug
         return;
     }
+    ESP_LOGI(TAG, "Firmware Uploaded!"); //debug
     /**
      * Update virtual sensor list & 
      * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
      * */
     bhy2_update_virtual_sensor_list(&dev);
     bhy2_register_fifo_parse_callback(BHI360_VIRTUAL_SENSOR_ID, rot_vec_cb, NULL, &dev);
-    
+    ESP_LOGI(TAG, "Updated virtual sensor and fifo parse callback"); //debug
     
     
     /**
@@ -122,11 +145,17 @@ void app_main(void) {
      * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
      * */
     bhy2_set_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, SensorSampleRate, SensorLatency, &dev);
+    ESP_LOGI(TAG, "BHi360 ready, polling for rotation vecotr"); //debug
 
-     printf("BHI360 ready - polling for rotation vector...\n");
-    while (1) { //Superloop type function (previous code is effectively setup, this is superloop)
+    int count = 0;
+    while (1) {
         bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
-        vTaskDelay(pdMS_TO_TICKS(100));
-
+        
+        count++;
+        if (count % 10 == 0) {  // Print every 1s
+            printf("Loop %d OK\n", count);
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(100));  // 100ms yield (100Hz), FEED WDT [web:94]
     }
 }
