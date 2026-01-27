@@ -1,31 +1,31 @@
-combine_sources() {
-    output_file="$1"
+#!/usr/bin/env bash
 
-    if [ -z "$output_file" ]; then
-        echo "Usage: combine_sources <output-file>"
-        return 1
-    fi
+# combine_sources.sh
+# Concatenate all .c and .h files into one output file.
 
-    # Truncate or create the output file
-    > "$output_file"
+output_file="${1:-allCode.txt}"
 
-    # Expand only if files exist
-    shopt -s nullglob 2>/dev/null || :
-    files=( *.c *.h )
+# Truncate or create the output file
+> "$output_file"
 
-    if [ ${#files[@]} -eq 0 ]; then
-        echo "No .c or .h files found in $(pwd)"
-        return 1
-    fi
+# Expand only if files exist
+shopt -s nullglob
+files=( *.c *.h )
+shopt -u nullglob
 
-    for file in "${files[@]}"; do
-        echo "Adding $file"
-        {
-            echo "// $file"
-            cat "$file"
-            echo
-        } >> "$output_file"
-    done
+if [ ${#files[@]} -eq 0 ]; then
+    echo "No .c or .h files found in $(pwd)"
+    exit 1
+fi
 
-    echo "Done. Wrote ${#files[@]} files into $output_file"
-}
+for file in "${files[@]}"; do
+    echo "Adding $file"
+    {
+        echo "// $file"
+        cat "$file"
+        echo
+    } >> "$output_file"
+done
+
+echo "Done. Wrote ${#files[@]} files into $output_file"
+

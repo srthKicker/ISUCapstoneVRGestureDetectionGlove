@@ -14,5 +14,12 @@ int8_t bhi360_i2c_write(uint8_t reg_addr, const uint8_t *data, uint32_t len, voi
 //Will adjust to work better with FreeRTOS soon.
 void bhi360_delay_us(uint32_t period, void *intf_ptr);
 
+typedef struct i2cContext {
+    i2c_device_config_t devConfig;
+    i2c_master_bus_config_t busConfig;
+    i2c_master_dev_handle_t devHandle;
+    i2c_master_bus_handle_t busHandle;
+} i2cContext_t;
+
 #endif //BHI360_I2C_H
 //intf_ptr
