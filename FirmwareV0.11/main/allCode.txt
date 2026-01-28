@@ -5,7 +5,6 @@
 #include "bhi360_i2c.h" //Header file we are defining
 #include <rom/ets_sys.h> //For delay function
 #include "bhi3.h" //For constants that the sensor might send over.
-
 //#define SDA_0 21
 //#define SCL_0 22
 //#define BEGIN_DELAY_TICKS 10
@@ -16,11 +15,12 @@
 int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_ptr)
 {
     // Cast the interface pointer to the ESP-IDF I2C device handle
-    i2c_master_dev_handle_t i2c_dev = (i2c_master_dev_handle_t)intf_ptr;
-
-    // Perform a write-then-read transaction
+    i2cContext_t * cntxt = (i2cContext_t *)intf_ptr;
+    i2c_master_dev_handle_t devHandle = cntxt->devHandle;
+    // First write the register we wanna read from
+    //Then read length from that register
     esp_err_t ret = i2c_master_transmit_receive(
-        i2c_dev,
+        devHandle,
         &regAddr,        // write buffer: register address
         1,               // write size (we want to write a 1 byte register address)
         data,            // read buffer (where we store the read data)
@@ -34,15 +34,17 @@ int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_
 //Writes a specified number of bytes over i2c using the modern form
 int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
 {
-    i2c_master_dev_handle_t i2c_dev = (i2c_master_dev_handle_t)intf_ptr;
+    i2cContext_t * cntxt = (i2cContext_t *)intf_ptr;
+    i2c_master_dev_handle_t devHandle = cntxt->devHandle;
 
     // Build a buffer: [regAddr][data...]
     uint8_t buf[len + 1];
     buf[0] = regAddr;
     memcpy(&buf[1], data, len);
 
+    //Simply write to the i2c address given, starting with the register address
     esp_err_t ret = i2c_master_transmit(
-        i2c_dev,
+        devHandle,
         buf,
         len + 1,
         100
@@ -50,7 +52,10 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
     return (ret == ESP_OK) ? 0 : -1;
 }
 
-
+//Simple delay function to pass to the BHI360 drivers.
+void bhi360_delay_us(uint32_t period, void *intf_ptr) {
+    vTaskDelay(pdMS_TO_TICKS((period + 999) / 1000));  // us → ms, ceil
+}
 
 
 // main.c
@@ -73,8 +78,13 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
 //Pin numbers
 #define SDA_0 21
 #define SCL_0 22
+//I2C stuff
+#define I2C_RATE_HZ 100000 //100khz
+#define I2C_TIMEOUT_US 1000 //1ms timeout for clock
 // Firmware images
 extern const unsigned char bhi360_firmware_image[]; 
+//debugging
+const char *TAG = "Testing";
 //extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
 //Addresses and Registers
 const uint8_t SensorAddress = 0x28; //Default for BHI360, change for I2C multiplexer when that gets added
@@ -99,6 +109,15 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
 }
 
 void app_main(void) {
+    printf("1. START app_main (printf OK)\n");  // No lock
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    ESP_LOGI(TAG, "2. ESP_LOG now safe");
+    //ESP_LOGI(TAG, "L0:%d L1:%d", led0Brightness, led1Brightness);
+    ESP_LOGI(TAG, "Delaying to get reliable boot..."); //debug
+    //Delay needed for boot sequence to show on serial
+    vTaskDelay(pdMS_TO_TICKS(5000)); //5s delay
+    ESP_LOGI(TAG, "Done Delaying!"); //debug
+    
     /**
      * Variables needed for function
      */
@@ -119,51 +138,67 @@ void app_main(void) {
         .glitch_ignore_cnt = 7,
         .flags.enable_internal_pullup = true,
     };
-    i2c_master_bus_handle_t busHandle;
-    ESP_ERROR_CHECK(i2c_new_master_bus(&i2cBusConfig, &busHandle));
+    i2c_device_config_t i2cDeviceConfig = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7, //bhi360 uses 7 bit addresses
+        
+        .device_address = SensorAddress, //change in constants at top
+        .scl_speed_hz = I2C_RATE_HZ, //100khz
+        .scl_wait_us = I2C_TIMEOUT_US,
+        .flags.disable_ack_check = 0, //Enable NACK error detection.
+    };
+    i2c_master_bus_handle_t i2cBusHandle;
+    i2c_master_dev_handle_t i2cDevHandle;
 
+    ESP_LOGI(TAG, "Declared structs!"); //debug
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2cBusConfig, &i2cBusHandle));
+    //Add the device we've made here
+    i2c_master_bus_add_device(i2cBusHandle,&i2cDeviceConfig,&i2cDevHandle);
+    ESP_LOGI(TAG, "Added i2c device"); //debug
+    //We pass this context to every i2c function through intf_ptr (pass by reference)
+    i2cContext_t cntxt = {
+        .busConfig = i2cBusConfig,
+        .busHandle = i2cBusHandle,
+        .devHandle = i2cDevHandle,
+        .devConfig = i2cDeviceConfig,
+    };
     //struct bhy2_virt_sensor_conf virtualSensorConf;
 
-    /**
-     * Configure I2C communication, Old and creaky
-     * */
-   /* i2c_config_t i2cConf = {
-    .mode = I2C_MODE_MASTER,
-    .sda_io_num = 21,      // SDA_0
-    .scl_io_num = 22,      // SCL_0
-    .sda_pullup_en = GPIO_PULLUP_ENABLE,  // Use external pull-ups in final design
-    .scl_pullup_en = GPIO_PULLUP_ENABLE,
-    .master = {.clk_speed = 100000},  // 100khz
-    .clk_flags = 0
-    }; 
-    ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2cBusConfig));
-    ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, i2cBusConfig.mode, 0, 0, 0)); */
-
+    //debug
+    ESP_LOGI(TAG, "3. Testing I2C...");
+    uint8_t chip_id[1];
+    if (bhi360_i2c_read(0x00, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
+        ESP_LOGI(TAG, "I2C OK! CHIP_ID=0x%02x (expect 0xC8)", chip_id[0]);
+    } else {
+        ESP_LOGE(TAG, "I2C FAIL - No device @0x28");
+        while(1) vTaskDelay(pdMS_TO_TICKS(1000));  // Hang safe
+    }
     /**
      * Initialize BHI360 interface
+     * We pass the configuration struct to this as intf_ptr to give us context for everything
      * */
     if (bhy2_init(intf, bhi360_i2c_read, bhi360_i2c_write,  
-                    bhi360_delay_us, 256, &i2cBusConfig, &dev) != BHY2_OK) {
+                    bhi360_delay_us, 256, &cntxt, &dev) != BHY2_OK) {
         printf("BHI360 init failed\n");
         return;
     }
-    
+    ESP_LOGI(TAG, "Initialized bhy2_init i guess"); //debug
     /**
      * Load firmware and boot from RAM
      * */
-    printf("Uploading firmware...\n");
+    ESP_LOGI(TAG, "Uploading firmware.."); //debug
     if (bhy2_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev) != BHY2_OK ||
         bhy2_boot_from_ram(&dev) != BHY2_OK) { //if either upload or boot fails print error
-        printf("Firmware load failed\n");
+        ESP_LOGI(TAG, "Firmware load failed"); //debug
         return;
     }
+    ESP_LOGI(TAG, "Firmware Uploaded!"); //debug
     /**
      * Update virtual sensor list & 
      * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
      * */
     bhy2_update_virtual_sensor_list(&dev);
     bhy2_register_fifo_parse_callback(BHI360_VIRTUAL_SENSOR_ID, rot_vec_cb, NULL, &dev);
-    
+    ESP_LOGI(TAG, "Updated virtual sensor and fifo parse callback"); //debug
     
     
     /**
@@ -171,12 +206,18 @@ void app_main(void) {
      * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
      * */
     bhy2_set_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, SensorSampleRate, SensorLatency, &dev);
+    ESP_LOGI(TAG, "BHi360 ready, polling for rotation vecotr"); //debug
 
-     printf("BHI360 ready - polling for rotation vector...\n");
-    while (1) { //Superloop type function (previous code is effectively setup, this is superloop)
+    int count = 0;
+    while (1) {
         bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
-        vTaskDelay(pdMS_TO_TICKS(100));
-
+        
+        count++;
+        if (count % 10 == 0) {  // Print every 1s
+            printf("Loop %d OK\n", count);
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(100));  // 100ms yield (100Hz), FEED WDT [web:94]
     }
 }
 
@@ -184,6 +225,8 @@ void app_main(void) {
 #ifndef BHI360_I2C_H
 #define BHI360_I2C_H
 #include "bhi3.h"  // For function pointer types
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 /**
  * Simple header file for I2C functions that we want to use in main
@@ -196,6 +239,13 @@ int8_t bhi360_i2c_write(uint8_t reg_addr, const uint8_t *data, uint32_t len, voi
 //Callback function to delay for a bit to allow i2c lines to settle
 //Will adjust to work better with FreeRTOS soon.
 void bhi360_delay_us(uint32_t period, void *intf_ptr);
+
+typedef struct i2cContext {
+    i2c_device_config_t devConfig;
+    i2c_master_bus_config_t busConfig;
+    i2c_master_dev_handle_t devHandle;
+    i2c_master_bus_handle_t busHandle;
+} i2cContext_t;
 
 #endif //BHI360_I2C_H
 //intf_ptr
