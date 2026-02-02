@@ -22,6 +22,7 @@
 #define I2C_TIMEOUT_US 1000 //1ms timeout for clock
 // Firmware images
 extern const uint8_t bhi360_firmware_image[]; 
+static uint8_t fifo_buf[4096]; // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed
 //const uint32_t bhi360_firmware_size = 130312; //The size of the firmware currently
 //debugging
 const char *TAG = "Testing";
@@ -50,18 +51,16 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
 
 void app_main(void) {
     ESP_LOGI(TAG, "1. Start app_main, esplog ok");
-    vTaskDelay(pdMS_TO_TICKS(300));
+    vTaskDelay(pdMS_TO_TICKS(100));
     ESP_LOGI(TAG, "2. ESP_LOG now safe");
     ESP_LOGI(TAG, "Delaying to get reliable boot..."); //debug
     //Delay needed for boot sequence to show on serial
-    vTaskDelay(pdMS_TO_TICKS(300)); //5s delay
+    vTaskDelay(pdMS_TO_TICKS(100)); //5s delay
     ESP_LOGI(TAG, "Done Delaying!"); //debug
     
     /**
      * Variables needed for function
      */
-    // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed.
-    uint8_t fifo_buf[4096];
     //BHI360 driver variables
     struct bhy2_dev dev; // Device structure
     enum bhy2_intf intf = BHY2_I2C_INTERFACE; //Communication protocol
