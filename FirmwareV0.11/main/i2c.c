@@ -7,7 +7,7 @@
 //#define SDA_0 21
 //#define SCL_0 22
 //#define BEGIN_DELAY_TICKS 10
-#define I2C_TIMEOUT_MS 1000 // 1 second timeout, can change
+#define I2C_TIMEOUT_MS 500 // 1 second timeout, can change
 
 //Reads a specified number of bytes over i2c using the modern form
 //Pass a i2c_master_dev_handle_t into intf_ptr as &devHandleName
@@ -24,7 +24,7 @@ int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_
         1,               // write size (we want to write a 1 byte register address)
         data,            // read buffer (where we store the read data)
         len,             // read size
-        100              // timeout in ms
+        I2C_TIMEOUT_MS              // timeout in ms
     );
 
     return (ret == ESP_OK) ? 0 : -1;
@@ -46,13 +46,14 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
         devHandle,
         buf,
         len + 1,
-        100
+        I2C_TIMEOUT_MS
     );
     return (ret == ESP_OK) ? 0 : -1;
 }
 
 //Simple delay function to pass to the BHI360 drivers.
-void bhi360_delay_us(uint32_t period, void *intf_ptr) {
-    vTaskDelay(pdMS_TO_TICKS((period + 999) / 1000));  // us → ms, ceil
+void bhi360_delay_us(uint32_t period, void *intf_ptr){
+    ets_delay_us(period);
 }
+
 
