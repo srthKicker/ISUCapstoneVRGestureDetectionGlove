@@ -3,17 +3,17 @@
   "idf.espIdfPath": "/home/srth/esp/esp-idf",
   "idf.pythonInstallPath": "/usr/bin/python",
   "idf.openOcdConfigs": [
-    "board/esp32-wrover-kit-3.3v.cfg"
+    "board/esp32s3-builtin.cfg"
   ],
   "idf.port": "/dev/ttyUSB0",
   "idf.toolsPath": "/home/srth/.espressif",
   "idf.customExtraVars": {
-    "IDF_TARGET": "esp32"
+    "IDF_TARGET": "esp32s3"
   },
   "clangd.path": "/home/srth/.espressif/tools/esp-clang/16.0.1-fe4f10a809/esp-clang/bin/clangd",
   "clangd.arguments": [
     "--background-index",
     "--query-driver=**",
-    "--compile-commands-dir=/media/srth/GamerDisk/VSCodeProjects/ISUCapstoneVRGestureDetectionGlove/FirmwareV0.1/FirmwareV0.11/build"
+    "--compile-commands-dir=/media/srth/GamerDisk/VSCodeProjects/ISUCapstoneVRGestureDetectionGlove/FirmwareV0.11/build"
   ]
 }

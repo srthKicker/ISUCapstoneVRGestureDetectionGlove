@@ -15,13 +15,14 @@
 #define BHI360_SENSORID_RV 34 //Rotation vector setting 
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
 //Pin numbers
-#define SDA_0 21
-#define SCL_0 22
+#define SDA_0 16
+#define SCL_0 17
 //I2C stuff
 #define I2C_RATE_HZ 100000 //100khz
 #define I2C_TIMEOUT_US 1000 //1ms timeout for clock
 // Firmware images
 extern const uint8_t bhi360_firmware_image[]; 
+//const uint32_t bhi360_firmware_size = 130312; //The size of the firmware currently
 //debugging
 const char *TAG = "Testing";
 //extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
@@ -49,11 +50,11 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
 
 void app_main(void) {
     ESP_LOGI(TAG, "1. Start app_main, esplog ok");
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(300));
     ESP_LOGI(TAG, "2. ESP_LOG now safe");
     ESP_LOGI(TAG, "Delaying to get reliable boot..."); //debug
     //Delay needed for boot sequence to show on serial
-    vTaskDelay(pdMS_TO_TICKS(5000)); //5s delay
+    vTaskDelay(pdMS_TO_TICKS(300)); //5s delay
     ESP_LOGI(TAG, "Done Delaying!"); //debug
     
     /**
@@ -129,7 +130,7 @@ void app_main(void) {
         ESP_LOGI(TAG, "Firmware load failed"); //debug
         return;
     }
-    ESP_LOGI(TAG, "Firmware Uploaded!"); //debug
+    ESP_LOGI(TAG, "Firmware Uploadqed!"); //debug
     /**
      * Update virtual sensor list & 
      * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
