@@ -21,7 +21,7 @@
 #define I2C_RATE_HZ 100000 //100khz
 #define I2C_TIMEOUT_US 1000 //1ms timeout for clock
 // Firmware images
-extern const unsigned char bhi360_firmware_image[]; 
+extern const uint8_t bhi360_firmware_image[]; 
 //debugging
 const char *TAG = "Testing";
 //extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
