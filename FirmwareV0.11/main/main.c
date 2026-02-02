@@ -50,13 +50,7 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
 }
 
 void app_main(void) {
-    ESP_LOGI(TAG, "1. Start app_main, esplog ok");
-    vTaskDelay(pdMS_TO_TICKS(100));
-    ESP_LOGI(TAG, "2. ESP_LOG now safe");
-    ESP_LOGI(TAG, "Delaying to get reliable boot..."); //debug
-    //Delay needed for boot sequence to show on serial
-    vTaskDelay(pdMS_TO_TICKS(100)); //5s delay
-    ESP_LOGI(TAG, "Done Delaying!"); //debug
+    ESP_LOGI(TAG, "Start app_main, esplog ok");
     
     /**
      * Variables needed for function
@@ -146,14 +140,8 @@ void app_main(void) {
     bhy2_set_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, SensorSampleRate, SensorLatency, &dev);
     ESP_LOGI(TAG, "BHi360 ready, polling for rotation vecotr"); //debug
 
-    int count = 0;
     while (1) {
         bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
-        
-        count++;
-        if (count % 10 == 0) {  // Print every 1s
-            printf("Loop %d OK\n", count);
-        }
         
         vTaskDelay(pdMS_TO_TICKS(100));  // 100ms yield (100Hz), FEED WDT [web:94]
     }
