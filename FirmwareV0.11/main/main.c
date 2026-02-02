@@ -43,15 +43,14 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
             q_raw[2] / 16384.0f,
             q_raw[3] / 16384.0f
         };
-        printf("Rotation Vector: w=%.3f i=%.3f j=%.3f k=%.3f\n", q[0], q[1], q[2], q[3]);
+        ESP_LOGI("Quaternion Vector:", "w=%.3f i=%.3f j=%.3f k=%.3f\n", q[0], q[1], q[2], q[3]);
     }
 }
 
 void app_main(void) {
-    printf("1. START app_main (printf OK)\n");  // No lock
+    ESP_LOGI(TAG, "1. Start app_main, esplog ok");
     vTaskDelay(pdMS_TO_TICKS(1000));
     ESP_LOGI(TAG, "2. ESP_LOG now safe");
-    //ESP_LOGI(TAG, "L0:%d L1:%d", led0Brightness, led1Brightness);
     ESP_LOGI(TAG, "Delaying to get reliable boot..."); //debug
     //Delay needed for boot sequence to show on serial
     vTaskDelay(pdMS_TO_TICKS(5000)); //5s delay
