@@ -19,7 +19,7 @@
 #define SDA_0 16
 #define SCL_0 17
 //I2C stuff
-#define I2C_RATE_HZ 400000 //100khz
+#define I2C_RATE_HZ 200000 //200khz
 #define I2C_TIMEOUT_US 1000 //1ms timeout for clock
 // Firmware images
 extern const uint8_t bhi360_firmware_image[]; 
