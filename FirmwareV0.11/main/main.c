@@ -6,6 +6,7 @@
 #include "Bosch_Shuttle3_BHI360.fw.h"
 #include "bhi360_i2c.h"
 #include "stdint.h"
+#include "math.h"
 
 //These are the virtual sensor settings: (Page 103-104 of datasheet)
 //Rotation vector REQUIRES magnetometer BMM150/350, but has accuracy field
@@ -18,11 +19,10 @@
 #define SDA_0 16
 #define SCL_0 17
 //I2C stuff
-#define I2C_RATE_HZ 100000 //100khz
+#define I2C_RATE_HZ 400000 //100khz
 #define I2C_TIMEOUT_US 1000 //1ms timeout for clock
 // Firmware images
 extern const uint8_t bhi360_firmware_image[]; 
-static uint8_t fifo_buf[4096]; // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed
 //const uint32_t bhi360_firmware_size = 130312; //The size of the firmware currently
 //debugging
 const char *TAG = "Testing";
@@ -33,7 +33,35 @@ const float SensorSampleRate = 100.0f; //sample rate in HZ I think
 const uint32_t SensorLatency = 0; //Something with buffering and stuff, ill explain later
 
 
-//Global variables
+//Static variables
+static uint8_t fifo_buf[4096]; // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed
+static float quat[4];
+
+
+//Debug function to visualize whats going on
+static void quatToEuler(const float *q) {
+    ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", q[0], q[1], q[2], q[3]);
+    
+    float sinr_cosp = 2.0f * (q[0] * q[1] + q[2] * q[3]);
+    float cosr_cosp = 1.0f - 2.0f * (q[1]*q[1] + q[2]*q[2]);
+    float roll = atan2f(sinr_cosp, cosr_cosp);
+    
+    float sinp = 2.0f * (q[0] * q[2] - q[3] * q[1]);  // Fixed: direct sin_pitch
+    float pitch;
+    if (fabsf(sinp) >= 1.0f) {
+        pitch = copysignf(M_PI / 2.0f, sinp);  // Gimbal lock handling
+    } else {
+        pitch = asinf(sinp);
+    }
+    
+    float siny_cosp = 2.0f * (q[0] * q[3] + q[1] * q[2]);
+    float cosy_cosp = 1.0f - 2.0f * (q[2]*q[2] + q[3]*q[3]);
+    float yaw = atan2f(siny_cosp, cosy_cosp);
+    
+    ESP_LOGI("Euler", "roll=%.1f° pitch=%.1f° yaw=%.1f°", 
+             roll * 180.0f / M_PI, pitch * 180.0f / M_PI, yaw * 180.0f / M_PI);
+}
+
 
 //Scales raw data to correct data amount.
 static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv) {
@@ -45,9 +73,18 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
             q_raw[2] / 16384.0f,
             q_raw[3] / 16384.0f
         };
-        ESP_LOGI("Quaternion Vector:", "w=%.3f i=%.3f j=%.3f k=%.3f\n", q[0], q[1], q[2], q[3]);
+        quat[0] = q[0];
+        quat[1] = q[1];
+        quat[2] = q[2];
+        quat[3] = q[3];
+        
     }
 }
+
+
+
+
+
 
 void app_main(void) {
     ESP_LOGI(TAG, "Start app_main, esplog ok");
@@ -68,7 +105,7 @@ void app_main(void) {
         .scl_io_num = SCL_0,
         .sda_io_num = SDA_0,
         .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true,
+        .flags.enable_internal_pullup = false,
     };
     i2c_device_config_t i2cDeviceConfig = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7, //bhi360 uses 7 bit addresses
@@ -139,10 +176,13 @@ void app_main(void) {
      * */
     bhy2_set_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, SensorSampleRate, SensorLatency, &dev);
     ESP_LOGI(TAG, "BHi360 ready, polling for rotation vecotr"); //debug
-
+    //int count = 0;
     while (1) {
         bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
-        
-        vTaskDelay(pdMS_TO_TICKS(100));  // 100ms yield (100Hz), FEED WDT [web:94]
+        vTaskDelay(pdMS_TO_TICKS(1));
+        //ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", quat[0], quat[1], quat[2], quat[3]);
+        quatToEuler(quat);
+        //count++;
+        vTaskDelay(pdMS_TO_TICKS(5));  // 5ms yield 200hz
     }
 }

@@ -30,6 +30,7 @@ int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_
     return (ret == ESP_OK) ? 0 : -1;
 }
 
+/*
 //Writes a specified number of bytes over i2c using the modern form
 int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
 {
@@ -49,7 +50,26 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
         I2C_TIMEOUT_MS
     );
     return (ret == ESP_OK) ? 0 : -1;
+} */
+
+//Allocates on heap instead of on stack to try and fix it
+int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
+{
+    i2cContext_t *cntxt = (i2cContext_t *)intf_ptr;
+    i2c_master_dev_handle_t devHandle = cntxt->devHandle;
+
+    uint8_t *buf = malloc(len + 1);
+    if (!buf) return -1;
+
+    buf[0] = regAddr;
+    memcpy(&buf[1], data, len);
+
+    esp_err_t ret = i2c_master_transmit(devHandle, buf, len + 1, I2C_TIMEOUT_MS);
+
+    free(buf);
+    return (ret == ESP_OK) ? 0 : -1;
 }
+
 
 //Simple delay function to pass to the BHI360 drivers.
 void bhi360_delay_us(uint32_t period, void *intf_ptr){

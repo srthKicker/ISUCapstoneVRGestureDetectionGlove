@@ -8,7 +8,7 @@
 //#define SDA_0 21
 //#define SCL_0 22
 //#define BEGIN_DELAY_TICKS 10
-#define I2C_TIMEOUT_MS 1000 // 1 second timeout, can change
+#define I2C_TIMEOUT_MS 500 // 1 second timeout, can change
 
 //Reads a specified number of bytes over i2c using the modern form
 //Pass a i2c_master_dev_handle_t into intf_ptr as &devHandleName
@@ -25,12 +25,13 @@ int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_
         1,               // write size (we want to write a 1 byte register address)
         data,            // read buffer (where we store the read data)
         len,             // read size
-        100              // timeout in ms
+        I2C_TIMEOUT_MS              // timeout in ms
     );
 
     return (ret == ESP_OK) ? 0 : -1;
 }
 
+/*
 //Writes a specified number of bytes over i2c using the modern form
 int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
 {
@@ -47,15 +48,35 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
         devHandle,
         buf,
         len + 1,
-        100
+        I2C_TIMEOUT_MS
     );
+    return (ret == ESP_OK) ? 0 : -1;
+} */
+
+//Allocates on heap instead of on stack to try and fix it
+int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
+{
+    i2cContext_t *cntxt = (i2cContext_t *)intf_ptr;
+    i2c_master_dev_handle_t devHandle = cntxt->devHandle;
+
+    uint8_t *buf = malloc(len + 1);
+    if (!buf) return -1;
+
+    buf[0] = regAddr;
+    memcpy(&buf[1], data, len);
+
+    esp_err_t ret = i2c_master_transmit(devHandle, buf, len + 1, I2C_TIMEOUT_MS);
+
+    free(buf);
     return (ret == ESP_OK) ? 0 : -1;
 }
 
+
 //Simple delay function to pass to the BHI360 drivers.
-void bhi360_delay_us(uint32_t period, void *intf_ptr) {
-    vTaskDelay(pdMS_TO_TICKS((period + 999) / 1000));  // us → ms, ceil
+void bhi360_delay_us(uint32_t period, void *intf_ptr){
+    ets_delay_us(period);
 }
+
 
 
 // main.c
@@ -67,6 +88,7 @@ void bhi360_delay_us(uint32_t period, void *intf_ptr) {
 #include "Bosch_Shuttle3_BHI360.fw.h"
 #include "bhi360_i2c.h"
 #include "stdint.h"
+#include "math.h"
 
 //These are the virtual sensor settings: (Page 103-104 of datasheet)
 //Rotation vector REQUIRES magnetometer BMM150/350, but has accuracy field
@@ -76,13 +98,14 @@ void bhi360_delay_us(uint32_t period, void *intf_ptr) {
 #define BHI360_SENSORID_RV 34 //Rotation vector setting 
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
 //Pin numbers
-#define SDA_0 21
-#define SCL_0 22
+#define SDA_0 16
+#define SCL_0 17
 //I2C stuff
 #define I2C_RATE_HZ 100000 //100khz
 #define I2C_TIMEOUT_US 1000 //1ms timeout for clock
 // Firmware images
-extern const unsigned char bhi360_firmware_image[]; 
+extern const uint8_t bhi360_firmware_image[]; 
+//const uint32_t bhi360_firmware_size = 130312; //The size of the firmware currently
 //debugging
 const char *TAG = "Testing";
 //extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
@@ -92,7 +115,30 @@ const float SensorSampleRate = 100.0f; //sample rate in HZ I think
 const uint32_t SensorLatency = 0; //Something with buffering and stuff, ill explain later
 
 
-//Global variables
+//Static variables
+static uint8_t fifo_buf[4096]; // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed
+static float quat[4];
+
+static void quatToEuler(const float *q) {
+    ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", q[0], q[1], q[2], q[3]);
+    
+    // Extract Euler angles (radians): roll (x), pitch (y), yaw (z) in 3-2-1 sequence [web:1]
+    float sinr_cosp = 2.0f * (q[0] * q[1] + q[2] * q[3]);
+    float cosr_cosp = 1.0f - 2.0f * (q[1] * q[1] + q[2] * q[2]);
+    float roll = atan2f(sinr_cosp, cosr_cosp);
+    
+    float sinp = sqrtf(1.0f + 2.0f * (q[0] * q[2] - q[1] * q[3]));
+    float cosp = sqrtf(1.0f - 2.0f * (q[0] * q[2] - q[1] * q[3]));
+    float pitch = 2.0f * atan2f(sinp, cosp) - M_PI / 2.0f;
+    
+    float siny_cosp = 2.0f * (q[0] * q[3] + q[1] * q[2]);
+    float cosy_cosp = 1.0f - 2.0f * (q[2] * q[2] + q[3] * q[3]);
+    float yaw = atan2f(siny_cosp, cosy_cosp);
+    
+    // Convert to degrees and print
+    ESP_LOGI("Euler", "roll=%.1f° pitch=%.1f° yaw=%.1f°", 
+             roll * 180.0f / M_PI, pitch * 180.0f / M_PI, yaw * 180.0f / M_PI);
+}
 
 //Scales raw data to correct data amount.
 static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv) {
@@ -104,25 +150,25 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
             q_raw[2] / 16384.0f,
             q_raw[3] / 16384.0f
         };
-        printf("Rotation Vector: w=%.3f i=%.3f j=%.3f k=%.3f\n", q[0], q[1], q[2], q[3]);
+        quat[0] = q[0];
+        quat[1] = q[1];
+        quat[2] = q[2];
+        quat[3] = q[3];
+        ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", q[0], q[1], q[2], q[3]);
     }
 }
 
+
+
+
+
+
 void app_main(void) {
-    printf("1. START app_main (printf OK)\n");  // No lock
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    ESP_LOGI(TAG, "2. ESP_LOG now safe");
-    //ESP_LOGI(TAG, "L0:%d L1:%d", led0Brightness, led1Brightness);
-    ESP_LOGI(TAG, "Delaying to get reliable boot..."); //debug
-    //Delay needed for boot sequence to show on serial
-    vTaskDelay(pdMS_TO_TICKS(5000)); //5s delay
-    ESP_LOGI(TAG, "Done Delaying!"); //debug
+    ESP_LOGI(TAG, "Start app_main, esplog ok");
     
     /**
      * Variables needed for function
      */
-    // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed.
-    uint8_t fifo_buf[4096];
     //BHI360 driver variables
     struct bhy2_dev dev; // Device structure
     enum bhy2_intf intf = BHY2_I2C_INTERFACE; //Communication protocol
@@ -191,7 +237,7 @@ void app_main(void) {
         ESP_LOGI(TAG, "Firmware load failed"); //debug
         return;
     }
-    ESP_LOGI(TAG, "Firmware Uploaded!"); //debug
+    ESP_LOGI(TAG, "Firmware Uploadqed!"); //debug
     /**
      * Update virtual sensor list & 
      * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
@@ -207,20 +253,14 @@ void app_main(void) {
      * */
     bhy2_set_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, SensorSampleRate, SensorLatency, &dev);
     ESP_LOGI(TAG, "BHi360 ready, polling for rotation vecotr"); //debug
-
-    int count = 0;
+    //int count = 0;
     while (1) {
         bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
-        
-        count++;
-        if (count % 10 == 0) {  // Print every 1s
-            printf("Loop %d OK\n", count);
-        }
-        
-        vTaskDelay(pdMS_TO_TICKS(100));  // 100ms yield (100Hz), FEED WDT [web:94]
+        //quatToEuler(quat);
+        //count++;
+        vTaskDelay(pdMS_TO_TICKS(5));  // 5ms yield 200hz
     }
 }
-
 // bhi360_i2c.h
 #ifndef BHI360_I2C_H
 #define BHI360_I2C_H
