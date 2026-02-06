@@ -15,5 +15,6 @@
     "--background-index",
     "--query-driver=**",
     "--compile-commands-dir=/media/srth/GamerDisk/VSCodeProjects/ISUCapstoneVRGestureDetectionGlove/FirmwareV0.11/build"
-  ]
+  ],
+  "idf.currentSetup": "/home/srth/esp/esp-idf"
 }

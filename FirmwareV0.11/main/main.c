@@ -39,8 +39,9 @@ static float quat[4];
 
 
 //Debug function to visualize whats going on
+//I just found this logic, i dont know how it works but it seems to lol
 static void quatToEuler(const float *q) {
-    ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", q[0], q[1], q[2], q[3]);
+    //ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", q[0], q[1], q[2], q[3]);
     
     float sinr_cosp = 2.0f * (q[0] * q[1] + q[2] * q[3]);
     float cosr_cosp = 1.0f - 2.0f * (q[1]*q[1] + q[2]*q[2]);
@@ -183,6 +184,6 @@ void app_main(void) {
         //ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", quat[0], quat[1], quat[2], quat[3]);
         quatToEuler(quat);
         //count++;
-        vTaskDelay(pdMS_TO_TICKS(5));  // 5ms yield 200hz
+        vTaskDelay(pdMS_TO_TICKS(10));  // 5ms yield 200hz
     }
 }
