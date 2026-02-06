@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 typedef struct {
     float ax, ay, az;
     float gx, gy, gz;
