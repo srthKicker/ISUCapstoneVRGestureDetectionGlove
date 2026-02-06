@@ -1,16 +1,20 @@
-#include "imu_common.h"
+#include "imu_mpu6050.h"
 
-static const char *TAG = "MPU6050";
-
-void mpu6050_init(int index) {
-    ESP_LOGI(TAG, "MPU6050 %d initialized", index);
+void mpu6050_init(void)
+{
+    // TODO: I2C init + config
 }
 
-void mpu6050_read(int index, imu_sample_t *out) {
-    out->ax = 0;
-    out->ay = 0;
-    out->az = 0;
-    out->gx = 0;
-    out->gy = 0;
-    out->gz = 0;
+void mpu6050_read(imu_sample_t *sample)
+{
+    sample->ax = 0;
+    sample->ay = 0;
+    sample->az = 0;
+    sample->gx = 0;
+    sample->gy = 0;
+    sample->gz = 0;
+    sample->mx = 0;
+    sample->my = 0;
+    sample->mz = 0;
+    sample->timestamp = 0;
 }
