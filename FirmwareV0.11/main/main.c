@@ -1,6 +1,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "driver/i2c_master.h"
 #include "bhi3.h"
 #include "Bosch_Shuttle3_BHI360.fw.h"
@@ -19,7 +20,7 @@
 #define SDA_0 16
 #define SCL_0 17
 //I2C stuff
-#define I2C_RATE_HZ 200000 //200khz
+#define I2C_RATE_HZ 400000 //200khz
 #define I2C_TIMEOUT_US 1000 //1ms timeout for clock
 // Firmware images
 extern const uint8_t bhi360_firmware_image[]; 
@@ -41,8 +42,6 @@ static float quat[4];
 //Debug function to visualize whats going on
 //I just found this logic, i dont know how it works but it seems to lol
 static void quatToEuler(const float *q) {
-    //ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", q[0], q[1], q[2], q[3]);
-    
     float sinr_cosp = 2.0f * (q[0] * q[1] + q[2] * q[3]);
     float cosr_cosp = 1.0f - 2.0f * (q[1]*q[1] + q[2]*q[2]);
     float roll = atan2f(sinr_cosp, cosr_cosp);
@@ -78,7 +77,7 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
         quat[1] = q[1];
         quat[2] = q[2];
         quat[3] = q[3];
-        
+
     }
 }
 
@@ -179,11 +178,15 @@ void app_main(void) {
     ESP_LOGI(TAG, "BHi360 ready, polling for rotation vecotr"); //debug
     //int count = 0;
     while (1) {
-        bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
+        esp_err_t err = bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
+        if(err != BHY2_OK){
+            ESP_LOGW("I2C Error", "FIFO err: %d", err);
+        }
         vTaskDelay(pdMS_TO_TICKS(1));
         //ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", quat[0], quat[1], quat[2], quat[3]);
         quatToEuler(quat);
         //count++;
-        vTaskDelay(pdMS_TO_TICKS(10));  // 5ms yield 200hz
+
+        vTaskDelay(pdMS_TO_TICKS(10));  // 5ms yield 200hz 10ms yield 100hz
     }
 }
