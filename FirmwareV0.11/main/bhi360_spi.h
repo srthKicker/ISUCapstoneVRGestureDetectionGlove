@@ -3,6 +3,8 @@
 #include "bhi3.h"  // For function pointer types
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "driver/spi_common.h" 
+#include "driver/spi_master.h"
 
 /**
  * Simple header file for spi functions that we want to use in main
@@ -16,8 +18,15 @@ int8_t bhi360_spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len, voi
 //Will adjust to work better with FreeRTOS soon.
 void bhi360_delay_us(uint32_t period, void *intf_ptr);
 
-typedef struct spiContext {
 
+/*
+Will be passed as intf_ptr to each of these functions to give important information
+like pin numbers, mode, 
+*/
+typedef struct spiContext {
+    spi_bus_config_t busConfig;
+    spi_device_interface_config_t deviceConfig;
+    spi_device_handle_t deviceHandle;
 } spiContext_t;
 
 #endif //BHI360_spi_H
