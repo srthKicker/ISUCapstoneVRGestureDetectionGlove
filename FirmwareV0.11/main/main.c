@@ -17,8 +17,8 @@
 #define BHI360_SENSORID_RV 34 //Rotation vector setting 
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
 //Pin numbers
-#define SDA_0 16
-#define SCL_0 17
+#define SDA_0 11 //same as mosi with my wiring
+#define SCL_0 12 //same as sck with my wiring
 //I2C stuff
 #define I2C_RATE_HZ 400000 //200khz
 #define I2C_TIMEOUT_US 1000 //1ms timeout for clock
@@ -29,7 +29,7 @@ extern const uint8_t bhi360_firmware_image[];
 const char *TAG = "Testing";
 //extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
 //Addresses and Registers
-const uint8_t SensorAddress = 0x28; //Default for BHI360, change for I2C multiplexer when that gets added
+const uint8_t SensorAddress = 0x29; //0x28 Default for BHI360 (or 0x29 if things are different), change for I2C multiplexer when that gets added
 const float SensorSampleRate = 100.0f; //sample rate in HZ I think
 const uint32_t SensorLatency = 0; //Something with buffering and stuff, ill explain later
 
