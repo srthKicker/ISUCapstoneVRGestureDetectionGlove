@@ -106,8 +106,8 @@ void app_main(void) {
     };
     
     spi_device_interface_config_t spiDeviceConfig = {
-        .command_bits = 0,
-        .address_bits = 8,      // BHI360 SPI uses 8-bit address
+        .command_bits = 8, // BHI360 spi drivers i made use 8 command bits
+        .address_bits = 0, 
         .dummy_bits = 0,
         .mode = SPI_MODE,
         .duty_cycle_pos = 0,
@@ -142,7 +142,7 @@ void app_main(void) {
     //debug - test SPI communication
     ESP_LOGI(TAG, "3. Testing SPI...");
     uint8_t chip_id[1];
-    if (bhi360_spi_read(0x00, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
+    if (bhi360_spi_read(0x01, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
         ESP_LOGI(TAG, "SPI OK! CHIP_ID=0x%02x (expect 0xC8)", chip_id[0]);
     } else {
         ESP_LOGE(TAG, "SPI FAIL - No device");
