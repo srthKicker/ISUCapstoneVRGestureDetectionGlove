@@ -26,7 +26,7 @@
 
 //SPI stuff
 #define SPI_HOST    SPI2_HOST
-#define SPI_CLK_HZ  (1 * 100 * 1000)  // 100kHz
+#define SPI_CLK_HZ  (5 * 100 * 1000)  // 500kHz
 #define SPI_MODE    0
 #define SPI_BITS    8
 
