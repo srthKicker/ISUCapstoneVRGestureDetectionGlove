@@ -20,7 +20,7 @@
 #define SDA_0 11 //same as mosi with my wiring
 #define SCL_0 12 //same as sck with my wiring
 //I2C stuff
-#define I2C_RATE_HZ 400000 //200khz
+#define I2C_RATE_HZ 200000 //200khz
 #define I2C_TIMEOUT_US 1000 //1ms timeout for clock
 // Firmware images
 extern const uint8_t bhi360_firmware_image[]; 
@@ -29,7 +29,7 @@ extern const uint8_t bhi360_firmware_image[];
 const char *TAG = "Testing";
 //extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
 //Addresses and Registers
-const uint8_t SensorAddress = 0x29; //0x28 Default for BHI360 (or 0x29 if things are different), change for I2C multiplexer when that gets added
+const uint8_t SensorAddress = 0x28; //0x28 if sdo grounded for BHI360 or 0z29 if sdo set to 1.8v
 const float SensorSampleRate = 100.0f; //sample rate in HZ I think
 const uint32_t SensorLatency = 0; //Something with buffering and stuff, ill explain later
 
@@ -135,10 +135,10 @@ void app_main(void) {
     //debug
     ESP_LOGI(TAG, "3. Testing I2C...");
     uint8_t chip_id[1];
-    if (bhi360_i2c_read(0x00, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
+    if (bhi360_i2c_read(0x01, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
         ESP_LOGI(TAG, "I2C OK! CHIP_ID=0x%02x (expect 0xC8)", chip_id[0]);
     } else {
-        ESP_LOGE(TAG, "I2C FAIL - No device @0x28");
+        ESP_LOGE(TAG, "I2C FAIL - No device @0x%02x", SensorAddress);
         while(1) vTaskDelay(pdMS_TO_TICKS(1000));  // Hang safe
     }
     /**
