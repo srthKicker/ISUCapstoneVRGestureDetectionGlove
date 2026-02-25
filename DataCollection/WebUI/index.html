@@ -212,7 +212,143 @@
             <button id="downloadBtn" class="btn-primary" onclick="downloadData()" style="width: 100%;">📥 Download Session Data</button>
         </div>
     </div>
+<!--
+<script>
+const GESTURES = ['Base', 'Gesture1', 'Gesture2', 'Gesture3', 'Gesture4'];
 
+let port = null;
+let reader = null;
+let writer = null;
+let isConnected = false;
+let isSessionActive = false;
+let currentGestureIndex = 0;
+let gestureSequence = [];
+let sessionData = [];
+let currentGestureData = [];
+let readBuffer = "";
+
+// =======================
+// CONNECT SERIAL (115200)
+// =======================
+async function connectSerial() {
+    try {
+        port = await navigator.serial.requestPort();   // Request permission
+        await port.open({ baudRate: 115200 });         // 115200 Baud
+        
+        writer = port.writable.getWriter();
+        isConnected = true;
+
+        updateConnectionStatus(true);
+        readSerialData();
+    } catch (err) {
+        console.error(err);
+        alert("Connection failed: " + err.message);
+    }
+}
+
+// =======================
+// READ SERIAL (Buffered)
+// =======================
+async function readSerialData() {
+    reader = port.readable.getReader();
+
+    try {
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            const chunk = new TextDecoder().decode(value);
+            readBuffer += chunk;
+
+            // Split by newline
+            let lines = readBuffer.split('\n');
+            readBuffer = lines.pop(); // Save incomplete line
+
+            for (let line of lines) {
+                line = line.trim();
+                if (line.length > 0) {
+                    displayDataLog(line);
+
+                    if (isSessionActive) {
+                        currentGestureData.push(line);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error("Serial read error:", error);
+    } finally {
+        reader.releaseLock();
+    }
+}
+
+// =======================
+// SEND DATA TO ESP32
+// =======================
+async function sendToESP32(message) {
+    if (!writer) return;
+    const data = new TextEncoder().encode(message + "\n");
+    await writer.write(data);
+}
+
+// =======================
+// DISCONNECT
+// =======================
+async function disconnectSerial() {
+    try {
+        if (reader) {
+            await reader.cancel();
+            reader.releaseLock();
+        }
+        if (writer) {
+            writer.releaseLock();
+        }
+        if (port) {
+            await port.close();
+        }
+    } catch (err) {
+        console.error(err);
+    }
+
+    isConnected = false;
+    updateConnectionStatus(false);
+}
+
+// =======================
+// STATUS UI
+// =======================
+function updateConnectionStatus(connected) {
+    const status = document.getElementById('connectionStatus');
+    const startBtn = document.getElementById('startBtn');
+
+    if (connected) {
+        status.textContent = "✓ Connected @115200";
+        status.className = "status status-active";
+        startBtn.disabled = false;
+    } else {
+        status.textContent = "✗ Disconnected";
+        status.className = "status status-inactive";
+        startBtn.disabled = true;
+    }
+}
+
+// =======================
+// DATA LOG DISPLAY
+// =======================
+function displayDataLog(data) {
+    const logElement = document.getElementById('dataLog');
+    const timestamp = new Date().toLocaleTimeString();
+
+    const entry = document.createElement('div');
+    entry.className = 'data-log-entry';
+    entry.textContent = `[${timestamp}] ${data}`;
+
+    logElement.appendChild(entry);
+    logElement.scrollTop = logElement.scrollHeight;
+}
+</script>
+-->
+ 
     <script>
         const GESTURES = ['Base', 'Gesture1', 'Gesture2', 'Gesture3', 'Gesture4'];
         
@@ -294,7 +430,8 @@
                 updateConnectionStatus(false);
             }
         }
-        
+
+
         function updateConnectionStatus(connected) {
             const status = document.getElementById('connectionStatus');
             const startBtn = document.getElementById('startBtn');
@@ -420,7 +557,46 @@
             writer.write(new TextEncoder().encode(message + '\n'));
             writer.releaseLock();
         }
-        
+
+        async function readSerialData() {
+            if (!port) return;
+
+            const reader = port.readable.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            try {
+                while (true) {
+                   const { value, done } = await reader.read();
+                   if (done) break;
+
+                    // Decode chunk and append to buffer
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // Split by newline
+                    const lines = buffer.split('\n');
+
+                    // Keep last incomplete line in buffer
+                    buffer = lines.pop();
+
+                    for (let line of lines) {
+                        line = line.trim();
+                        if (line.length === 0) continue;
+
+                        displayDataLog(line);
+
+                        if (isSessionActive) {
+                            currentGestureData.push(line);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Read error:', err);
+            } finally {
+                reader.releaseLock();
+            }
+        }
+        /*
         async function readSerialData() {
             if (!port) return;
             const reader = port.readable.getReader();
@@ -446,6 +622,7 @@
             }
         }
         
+      */
         function displayDataLog(data) {
             const logElement = document.getElementById('dataLog');
             const timestamp = new Date().toLocaleTimeString();
@@ -463,10 +640,10 @@
             }
             
             // Create CSV content
-            let csvContent = 'Gesture,Timestamp,Data\n';
+            let csvContent = 'Gesture,Data\n';
             sessionData.forEach(recording => {
-                const dataStr = recording.data.join(' | ').replace(/"/g, '""');
-                csvContent += `"${recording.gesture}","${recording.timestamp}","${dataStr}"\n`;
+                const dataStr = recording.data.join(' ').replace(/"/g, '""');
+                csvContent += `"${recording.gesture}","${dataStr}"\n`;
             });
             
             // Create blob and download
@@ -480,6 +657,22 @@
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
         }
+        function downloadCSV(gestureName, repetition, data) {
+            const header = "timestamp,q0,q1,q2,q3,...\n";
+            const csvContent = header + data.join("\n");
+
+            const blob = new Blob([csvContent], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${gestureName}_rep_${repetition}.csv`;
+            a.click();
+
+            URL.revokeObjectURL(url);
+        }
     </script>
+
+
 </body>
 </html>
