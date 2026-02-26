@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glove IMU Visualizer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap');
+
+  :root {
+    --bg:     #050810;
+    --panel:  #0a0f1e;
+    --border: #1a2540;
+    --accent: #00f0ff;
+    --accent2:#ff3cac;
+    --text:   #c8d8f0;
+    --dim:    #3a4a6a;
+    --f0: #00f0ff; --f1: #ff3cac; --f2: #ffe600;
+    --f3: #39ff14; --f4: #ff6d00; --f5: #bf5fff;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 52px 1fr;
+    grid-template-columns: 270px 1fr 270px;
+    overflow: hidden;
+  }
+
+  header {
+    grid-column: 1/-1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: var(--accent);
+  }
+  .hstatus { display: flex; align-items: center; gap: 14px; }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--dim); transition: background .3s;
+  }
+  .dot.live {
+    background: #00ff88;
+    box-shadow: 0 0 8px #00ff88;
+    animation: blink 1s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1}50%{opacity:.3} }
+  .mono { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--dim); }
+
+  .panel {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+  }
+  .panel.right { border-right: none; border-left: 1px solid var(--border); }
+  .ptitle {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--dim);
+    text-transform: uppercase;
+  }
+
+  #connect-btn {
+    width: 100%;
+    padding: 11px;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    border-radius: 3px;
+    text-transform: uppercase;
+    transition: all .2s;
+  }
+  #connect-btn:hover { background: var(--accent); color: var(--bg); box-shadow: 0 0 16px var(--accent); }
+  #connect-btn.on { border-color: var(--accent2); color: var(--accent2); }
+  #connect-btn.on:hover { background: var(--accent2); color: #fff; box-shadow: 0 0 16px var(--accent2); }
+
+  #status-box {
+    background: #020408;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 8px 10px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: #3a7a3a;
+    min-height: 36px;
+    line-height: 1.6;
+    word-break: break-word;
+  }
+  #status-box.err { color: #aa3333; }
+
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px 10px 15px;
+    position: relative;
+  }
+  .card-bar {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    border-radius: 4px 0 0 4px;
+  }
+  .cname { font-size: 12px; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px; }
+  .qgrid {
+    display: grid;
+    grid-template-columns: 12px 1fr;
+    gap: 1px 6px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+  }
+  .ql { color: var(--dim); }
+  .qv { transition: color .1s; }
+  .qv.flash { color: #fff; }
+  .erow { display: flex; gap: 5px; margin-top: 7px; }
+  .echip {
+    flex: 1; border: 1px solid var(--border);
+    border-radius: 3px; padding: 3px 0;
+    text-align: center; font-family: 'Share Tech Mono', monospace;
+  }
+  .echip .el { font-size: 8px; color: var(--dim); display: block; }
+  .echip .ev { font-size: 10px; }
+
+  #raw-log {
+    flex: 1;
+    background: #020408;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 7px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    overflow-y: auto;
+    min-height: 60px;
+    max-height: 160px;
+  }
+  .rline { color: #3a6a3a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rline.bad { color: #8a2a2a; }
+
+  #canvas-wrap { position: relative; background: var(--bg); overflow: hidden; }
+  #canvas-wrap canvas { display: block; }
+
+  .legend {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 12px;
+    background: rgba(10,15,30,.88); border: 1px solid var(--border);
+    border-radius: 4px; padding: 7px 14px; pointer-events: none;
+  }
+  .li { display: flex; align-items: center; gap: 5px; font-family: 'Share Tech Mono', monospace; font-size: 10px; }
+  .ld { width: 7px; height: 7px; border-radius: 50%; }
+
+  .bwrap { display: flex; flex-direction: column; gap: 8px; }
+  .brow { display: flex; flex-direction: column; gap: 3px; }
+  .blabel { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; }
+  .blabel span:last-child { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--dim); font-weight: 400; }
+  .btrack { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .bfill  { height: 100%; border-radius: 2px; transition: width .08s linear; }
+
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>◈ GLOVE IMU VISUALIZER</h1>
+  <div class="hstatus">
+    <div class="dot" id="dot"></div>
+    <span class="mono" id="hz-lbl">-- Hz</span>
+    <span class="mono" id="pkt-lbl">0 pkts</span>
+  </div>
+</header>
+
+<div class="panel" id="left-panel">
+  <div class="ptitle">Serial Connection</div>
+  <button id="connect-btn">⬡ Connect Serial</button>
+  <div id="status-box">Waiting for connection...</div>
+  <div class="mono" style="display:flex;justify-content:space-between;padding:2px 0;border-top:1px solid var(--border)">
+    <span>BAUD</span><span>500000</span>
+  </div>
+  <div class="mono" style="display:flex;justify-content:space-between;padding:2px 0;border-top:1px solid var(--border)">
+    <span>FORMAT</span><span>6 x w,x,y,z</span>
+  </div>
+  <div class="ptitle" style="margin-top:4px">Wrist — Global Frame</div>
+  <div class="card">
+    <div class="card-bar" style="background:var(--f0)"></div>
+    <div class="cname" style="color:var(--f0)">WRIST</div>
+    <div class="qgrid">
+      <span class="ql">w</span><span class="qv" id="qw-0">1.000000</span>
+      <span class="ql">x</span><span class="qv" id="qx-0">0.000000</span>
+      <span class="ql">y</span><span class="qv" id="qy-0">0.000000</span>
+      <span class="ql">z</span><span class="qv" id="qz-0">0.000000</span>
+    </div>
+    <div class="erow">
+      <div class="echip"><span class="el">ROLL</span><span class="ev" id="er-0">0.0</span></div>
+      <div class="echip"><span class="el">PITCH</span><span class="ev" id="ep-0">0.0</span></div>
+      <div class="echip"><span class="el">YAW</span><span class="ev" id="ey-0">0.0</span></div>
+    </div>
+  </div>
+  <div class="ptitle" style="margin-top:4px">Raw Serial</div>
+  <div id="raw-log"></div>
+</div>
+
+<div id="canvas-wrap">
+  <div class="legend" id="legend"></div>
+</div>
+
+<div class="panel right" id="right-panel">
+  <div class="ptitle">Fingers — Wrist-Relative</div>
+  <div id="finger-cards"></div>
+  <div class="ptitle" style="margin-top:4px">Bend Angles</div>
+  <div class="bwrap" id="bend-wrap"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function() {
+'use strict';
+
+// ── CONSTANTS ────────────────────────────────────────────
+const CSS_COLS = ['var(--f0)','var(--f1)','var(--f2)','var(--f3)','var(--f4)','var(--f5)'];
+const HEX_COLS = [0x00f0ff, 0xff3cac, 0xffe600, 0x39ff14, 0xff6d00, 0xbf5fff];
+const LABELS   = ['WRIST','F1','F2','F3','F4','F5'];
+const Q        = Array.from({length:6}, () => [1,0,0,0]);
+
+// ── BUILD FINGER CARDS + BEND BARS ───────────────────────
+const fingerCards = document.getElementById('finger-cards');
+const bendWrap    = document.getElementById('bend-wrap');
+const legend      = document.getElementById('legend');
+
+for (let i = 1; i <= 5; i++) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.style.marginBottom = '10px';
+  card.innerHTML =
+    '<div class="card-bar" style="background:'+CSS_COLS[i]+'"></div>'+
+    '<div class="cname" style="color:'+CSS_COLS[i]+'">FINGER '+i+'</div>'+
+    '<div class="qgrid">'+
+      '<span class="ql">w</span><span class="qv" id="qw-'+i+'">1.000000</span>'+
+      '<span class="ql">x</span><span class="qv" id="qx-'+i+'">0.000000</span>'+
+      '<span class="ql">y</span><span class="qv" id="qy-'+i+'">0.000000</span>'+
+      '<span class="ql">z</span><span class="qv" id="qz-'+i+'">0.000000</span>'+
+    '</div>'+
+    '<div class="erow">'+
+      '<div class="echip"><span class="el">ROLL</span><span class="ev" id="er-'+i+'">0.0</span></div>'+
+      '<div class="echip"><span class="el">PITCH</span><span class="ev" id="ep-'+i+'">0.0</span></div>'+
+      '<div class="echip"><span class="el">YAW</span><span class="ev" id="ey-'+i+'">0.0</span></div>'+
+    '</div>';
+  fingerCards.appendChild(card);
+
+  const brow = document.createElement('div');
+  brow.className = 'brow';
+  brow.innerHTML =
+    '<div class="blabel">'+
+      '<span style="color:'+CSS_COLS[i]+'">F'+i+'</span>'+
+      '<span id="ba-'+i+'">0.0&deg;</span>'+
+    '</div>'+
+    '<div class="btrack"><div class="bfill" id="bf-'+i+'" style="width:0%;background:'+CSS_COLS[i]+'"></div></div>';
+  bendWrap.appendChild(brow);
+}
+
+// Legend
+LABELS.forEach((lbl, i) => {
+  const col = '#'+HEX_COLS[i].toString(16).padStart(6,'0');
+  const el  = document.createElement('div');
+  el.className = 'li';
+  el.innerHTML = '<div class="ld" style="background:'+col+'"></div>'+lbl;
+  legend.appendChild(el);
+});
+
+// ── THREE.JS ─────────────────────────────────────────────
+const wrap     = document.getElementById('canvas-wrap');
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setPixelRatio(window.devicePixelRatio);
+wrap.appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
+camera.position.set(0, 0.18, 0.44);
+camera.lookAt(0, 0, -0.04);
+
+scene.add(new THREE.AmbientLight(0x102040, 3));
+const dl = new THREE.DirectionalLight(0xffffff, 1.4);
+dl.position.set(1,2,2); scene.add(dl);
+scene.add(new THREE.GridHelper(1,20,0x1a2540,0x0d1428)).position.y = -0.14;
+
+const POSITIONS = [
+  [0,0,0],[-0.14,0,-0.10],[-0.07,0,-0.14],[0,0,-0.155],[0.07,0,-0.14],[0.14,0,-0.10]
+];
+
+function makeIMU(hex) {
+  const g   = new THREE.Group();
+  const geo = new THREE.BoxGeometry(0.058,0.011,0.038);
+  g.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+    color:hex, emissive:hex, emissiveIntensity:0.3,
+    transparent:true, opacity:0.9, shininess:100
+  })));
+  g.add(new THREE.LineSegments(
+    new THREE.EdgesGeometry(geo),
+    new THREE.LineBasicMaterial({color:hex, transparent:true, opacity:0.5})
+  ));
+  const aL = 0.052;
+  [[1,0,0,0xff4444],[0,1,0,0x44ff44],[0,0,1,0x4488ff]].forEach(function(a){
+    g.add(new THREE.ArrowHelper(
+      new THREE.Vector3(a[0],a[1],a[2]),
+      new THREE.Vector3(0,0,0), aL, a[3], aL*0.28, aL*0.14
+    ));
+  });
+  g.add(new THREE.PointLight(hex,0.5,0.22));
+  return g;
+}
+
+const imuMeshes = HEX_COLS.map(function(col,i){
+  const obj = makeIMU(col);
+  obj.position.set(POSITIONS[i][0], POSITIONS[i][1], POSITIONS[i][2]);
+  scene.add(obj);
+  return obj;
+});
+
+for (var li = 1; li < 6; li++) {
+  scene.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(POSITIONS[0][0],POSITIONS[0][1],POSITIONS[0][2]),
+      new THREE.Vector3(POSITIONS[li][0],POSITIONS[li][1],POSITIONS[li][2])
+    ]),
+    new THREE.LineBasicMaterial({color:0x1a2540, transparent:true, opacity:0.4})
+  ));
+}
+
+function onResize() {
+  var w = wrap.clientWidth, h = wrap.clientHeight;
+  renderer.setSize(w,h);
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+var tq = new THREE.Quaternion();
+var camAngle = 0;
+
+// Correction quaternion: rotates sensor frame (Z-up) into Three.js frame (Y-up).
+// MPU chips lying flat report gravity on +Z axis. Three.js world has Y as up.
+// Fix: rotate -90 degrees around X axis  =>  q = [w=cos(-45), x=sin(-45), y=0, z=0]
+// THREE.Quaternion constructor is (x, y, z, w)
+var FRAME_CORRECTION = new THREE.Quaternion(-0.7071068, 0, 0, 0.7071068);
+
+function renderLoop() {
+  requestAnimationFrame(renderLoop);
+  Q.forEach(function(q,i){
+    // q is [w, x, y, z] from firmware; THREE.Quaternion takes (x, y, z, w)
+    tq.set(q[1], q[2], q[3], q[0]);
+    // Remap from sensor frame (Z-up) to Three.js frame (Y-up)
+    tq.premultiply(FRAME_CORRECTION);
+    imuMeshes[i].quaternion.copy(tq);
+  });
+  if (!connected) {
+    camAngle += 0.003;
+    camera.position.x = Math.sin(camAngle)*0.44;
+    camera.position.z = Math.cos(camAngle)*0.44;
+    camera.lookAt(0,0,-0.04);
+  }
+  renderer.render(scene,camera);
+}
+renderLoop();
+
+// ── MATH ─────────────────────────────────────────────────
+function toEuler(w,x,y,z) {
+  var r = Math.atan2(2*(w*x+y*z), 1-2*(x*x+y*y))*180/Math.PI;
+  var sp= 2*(w*y-z*x);
+  var p = (Math.abs(sp)>=1 ? Math.sign(sp)*90 : Math.asin(sp)*180/Math.PI);
+  var ya= Math.atan2(2*(w*z+x*y), 1-2*(y*y+z*z))*180/Math.PI;
+  return [r,p,ya];
+}
+function angleBetween(a,b) {
+  var d = Math.abs(a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3]);
+  return 2*Math.acos(Math.min(d,1))*180/Math.PI;
+}
+
+// ── UI ───────────────────────────────────────────────────
+function fmt(v){ return (v>=0?' ':'')+v.toFixed(6); }
+
+function updateCard(i, w, x, y, z) {
+  var vals = {w:w, x:x, y:y, z:z};
+  ['w','x','y','z'].forEach(function(c){
+    var el = document.getElementById('q'+c+'-'+i);
+    if (!el) return;
+    var s = fmt(vals[c]);
+    if (el.textContent !== s) {
+      el.textContent = s;
+      el.classList.add('flash');
+      setTimeout(function(){ el.classList.remove('flash'); }, 80);
+    }
+  });
+  var eul = toEuler(w,x,y,z);
+  var er  = document.getElementById('er-'+i);
+  var ep  = document.getElementById('ep-'+i);
+  var ey  = document.getElementById('ey-'+i);
+  if(er) er.textContent = eul[0].toFixed(1)+'°';
+  if(ep) ep.textContent = eul[1].toFixed(1)+'°';
+  if(ey) ey.textContent = eul[2].toFixed(1)+'°';
+}
+
+function updateBends() {
+  for (var i = 1; i <= 5; i++) {
+    var ang = angleBetween(Q[0], Q[i]);
+    var pct = Math.min(ang/90*100,100);
+    var bf  = document.getElementById('bf-'+i);
+    var ba  = document.getElementById('ba-'+i);
+    if(bf) bf.style.width = pct+'%';
+    if(ba) ba.textContent = ang.toFixed(1)+'°';
+  }
+}
+
+// ── LOG + STATUS ──────────────────────────────────────────
+var rawLog = document.getElementById('raw-log');
+var logBuf = [];
+function logLine(txt, bad) {
+  var d = document.createElement('div');
+  d.className = 'rline'+(bad?' bad':'');
+  d.textContent = txt;
+  logBuf.push(d);
+  rawLog.appendChild(d);
+  if (logBuf.length > 50) rawLog.removeChild(logBuf.shift());
+  rawLog.scrollTop = rawLog.scrollHeight;
+}
+
+var statusBox = document.getElementById('status-box');
+function setStatus(msg, isErr) {
+  statusBox.textContent = msg;
+  statusBox.className   = isErr ? 'err' : '';
+}
+
+// ── PACKET PARSE ─────────────────────────────────────────
+var pktCount=0, fpsT=Date.now(), fpsF=0;
+function parsePacket(line) {
+  var vals = line.split(',').map(function(s){ return parseFloat(s.trim()); })
+                            .filter(function(v){ return !isNaN(v); });
+  if (vals.length < 24) return false;
+  for (var i=0; i<6; i++) {
+    Q[i] = [vals[i*4], vals[i*4+1], vals[i*4+2], vals[i*4+3]];
+    updateCard(i, Q[i][0], Q[i][1], Q[i][2], Q[i][3]);
+  }
+  updateBends();
+  pktCount++; fpsF++;
+  document.getElementById('pkt-lbl').textContent = pktCount+' pkts';
+  var now = Date.now();
+  if (now-fpsT >= 1000) {
+    document.getElementById('hz-lbl').textContent = fpsF+' Hz';
+    fpsF=0; fpsT=now;
+  }
+  return true;
+}
+
+// ── SERIAL ───────────────────────────────────────────────
+var port=null, reader=null, connected=false, readBuf='';
+var btn = document.getElementById('connect-btn');
+var dot = document.getElementById('dot');
+
+btn.addEventListener('click', function() {
+  if (!('serial' in navigator)) {
+    setStatus('Web Serial not supported. Use Chrome or Edge served from http://localhost', true);
+    return;
+  }
+  if (connected) {
+    doDisconnect();
+  } else {
+    doConnect();
+  }
+});
+
+function doConnect() {
+  setStatus('Opening port picker...');
+  navigator.serial.requestPort().then(function(p) {
+    port = p;
+    setStatus('Opening @ 115200...');
+    return port.open({ baudRate: 500000 });
+  }).then(function() {
+    connected = true;
+    btn.textContent = 'Disconnect';
+    btn.classList.add('on');
+    dot.classList.add('live');
+    setStatus('Connected @ 500000 baud');
+    logLine('[SYS] Connected');
+    readLoop();
+  }).catch(function(e) {
+    setStatus('Error: '+e.message, true);
+    logLine('[ERR] '+e.message, true);
+    port = null;
+  });
+}
+
+function doDisconnect() {
+  connected = false;
+  var p = reader ? reader.cancel().catch(function(){}) : Promise.resolve();
+  p.then(function(){
+    reader = null;
+    return port ? port.close().catch(function(){}) : Promise.resolve();
+  }).then(function(){
+    port = null;
+    btn.textContent = '⬡ Connect Serial';
+    btn.classList.remove('on');
+    dot.classList.remove('live');
+    setStatus('Disconnected');
+    logLine('[SYS] Disconnected');
+  });
+}
+
+function readLoop() {
+  var decoder = new TextDecoder();
+  reader = port.readable.getReader();
+  function pump() {
+    reader.read().then(function(result) {
+      if (result.done || !connected) {
+        reader.releaseLock();
+        reader = null;
+        return;
+      }
+      readBuf += decoder.decode(result.value, { stream: true });
+      var lines = readBuf.split('\n');
+      readBuf = lines.pop();
+      lines.forEach(function(line) {
+        line = line.trim();
+        if (!line) return;
+        var ok = parsePacket(line);
+        if (pktCount % 15 === 0) logLine((ok?'» ':'? ')+line.slice(0,58));
+      });
+      pump();
+    }).catch(function(e) {
+      if (connected) {
+        setStatus('Read error: '+e.message, true);
+        logLine('[ERR] '+e.message, true);
+      }
+      if (reader) { try{ reader.releaseLock(); }catch(_){} reader=null; }
+    });
+  }
+  pump();
+}
+
+// ── DEMO ─────────────────────────────────────────────────
+function eulerToQuat(rx,ry,rz) {
+  var cx=Math.cos(rx/2),sx=Math.sin(rx/2);
+  var cy=Math.cos(ry/2),sy=Math.sin(ry/2);
+  var cz=Math.cos(rz/2),sz=Math.sin(rz/2);
+  return [cx*cy*cz+sx*sy*sz, sx*cy*cz-cx*sy*sz,
+          cx*sy*cz+sx*cy*sz, cx*cy*sz-sx*sy*cz];
+}
+setInterval(function(){
+  if (connected) return;
+  var t = Date.now()/1000;
+  Q[0]=eulerToQuat(Math.sin(t*.3)*.25, t*.15, Math.sin(t*.25)*.1);
+  Q[1]=eulerToQuat(Math.sin(t*1.1)*.7, 0, 0);
+  Q[2]=eulerToQuat(Math.sin(t*.9)*.55, 0, 0);
+  Q[3]=eulerToQuat(Math.sin(t*1.3)*.8, 0, 0);
+  Q[4]=eulerToQuat(Math.sin(t*.8)*.5,  0, 0);
+  Q[5]=eulerToQuat(Math.sin(t*1.6)*.6, 0, 0);
+  for (var i=0;i<6;i++) updateCard(i,Q[i][0],Q[i][1],Q[i][2],Q[i][3]);
+  updateBends();
+}, 16);
+
+})();
+</script>
+</body>
+</html>

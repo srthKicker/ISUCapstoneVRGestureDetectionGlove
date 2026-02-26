@@ -175,13 +175,6 @@
             padding: 2px 0;
             border-bottom: 1px solid #eee;
         }
-
-        .session-stats {
-            font-size: 13px;
-            color: #555;
-            margin: 6px 0;
-            text-align: center;
-        }
     </style>
 </head>
 <body>
@@ -190,29 +183,11 @@
         
         <div class="section">
             <h2>Serial Connection</h2>
-
-            <!-- Browser compatibility warning -->
-            <div id="browserWarning" style="display:none; background:#fff3cd; border:1px solid #ffc107; border-radius:5px; padding:10px; margin-bottom:12px; font-size:13px; color:#856404;">
-                ⚠️ Web Serial requires <strong>Chrome or Edge</strong> (desktop). Firefox and Safari are not supported.
-            </div>
-
-            <!-- Primary action: opens browser's native port picker -->
-            <button id="connectBtn" class="btn-primary" onclick="requestAndConnect()" style="width:100%; margin: 0 0 10px 0;">
-                🔌 Select Port &amp; Connect
-            </button>
-
-            <!-- Previously granted ports (populated after page load) -->
-            <div id="savedPortsSection" style="display:none;">
-                <div style="font-size:13px; color:#555; margin-bottom:6px;">Or reconnect to a previously used port:</div>
-                <div style="display:flex; gap:6px; align-items:center;">
-                    <select id="portSelect" class="serial-select" style="margin:0; flex:1;">
-                        <option value="">— saved ports —</option>
-                    </select>
-                    <button class="btn-primary" onclick="connectSavedPort()" style="margin:0; padding:10px 16px; white-space:nowrap;">Connect</button>
-                    <button class="btn-primary" onclick="refreshPorts()" style="margin:0; padding:10px 12px; background:#aaa;">🔄</button>
-                </div>
-            </div>
-
+            <select id="portSelect" class="serial-select">
+                <option value="">Select Serial Port</option>
+            </select>
+            <button id="refreshBtn" class="btn-primary" onclick="refreshPorts()" style="padding: 8px 16px; font-size: 12px; margin: 10px 5px 10px 0;">🔄 Refresh</button>
+            <button id="connectBtn" class="btn-primary" onclick="connectSerial()">Connect</button>
             <div class="status status-inactive" id="connectionStatus">Disconnected</div>
         </div>
         
@@ -223,8 +198,6 @@
                 <button id="stopBtn" class="btn-danger" onclick="stopSession()" disabled>Stop Session</button>
             </div>
             <div class="counter" id="gestureCounter">Gestures: 0/0</div>
-            <!-- Live row count so user can sanity-check data volume -->
-            <div class="session-stats" id="sessionStats">Rows collected: 0</div>
         </div>
         
         <div class="section">
@@ -240,29 +213,20 @@
         </div>
     </div>
 
-    <script>
+     <script>
         // ── Gesture list ────────────────────────────────────────────────────
         const GESTURES = ['Base', 'Gesture1', 'Gesture2', 'Gesture3', 'Gesture4'];
 
         function getGestureImagePath(name) { return `./${name}.jpg`; }
 
-        // ── Recording config ─────────────────────────────────────────────────
-        // How long to record each gesture in milliseconds.
-        // At ~100Hz (10ms ESP32 loop) this should yield ~300 rows.
-        const RECORD_MS   = 3000;
-        // Target row count — used for the live progress bar and as a hard cap.
-        // Set to match: RECORD_MS / ESP32_loop_delay_ms
-        const TARGET_ROWS = 300;
-
         // ── State ───────────────────────────────────────────────────────────
         let port               = null;
         let isConnected        = false;
         let isSessionActive    = false;
-        let isRecording        = false;
-        let recordingStartTime = 0;       // performance.now() timestamp when recording began
+        let isRecording        = false;         // true only during the 3-second capture window
         let currentGestureIndex = 0;
         let gestureSequence    = [];
-        let recordingInterval  = null;    // used only for the countdown UI display
+        let recordingInterval  = null;
 
         /*
          * sessionRows holds every captured data row as a plain object:
@@ -285,101 +249,48 @@
         const CSV_HEADER = ['gesture', 'recording_id', 'timestep', ...IMU_COLS];
 
         // ── Port management ─────────────────────────────────────────────────
-        window.addEventListener('load', async () => {
-            // Check browser support
-            if (!('serial' in navigator)) {
-                document.getElementById('browserWarning').style.display = 'block';
-                document.getElementById('connectBtn').disabled = true;
-                return;
-            }
-            await refreshPorts();
-        });
+        window.addEventListener('load', async () => { await refreshPorts(); });
 
-        // Refresh the "previously granted ports" dropdown
         async function refreshPorts() {
             try {
-                const ports  = await navigator.serial.getPorts();
-                const sel    = document.getElementById('portSelect');
-                const section = document.getElementById('savedPortsSection');
-
-                // Clear existing options
+                const ports = await navigator.serial.getPorts();
+                const sel   = document.getElementById('portSelect');
+                const prev  = sel.value;
                 while (sel.options.length > 1) sel.remove(1);
 
-                if (ports.length > 0) {
-                    section.style.display = 'block';
+                if (ports.length === 0) {
+                    const opt = document.createElement('option');
+                    opt.value = ''; opt.textContent = 'No ports found'; opt.disabled = true;
+                    sel.appendChild(opt);
+                } else {
                     ports.forEach((p, i) => {
                         const opt = document.createElement('option');
-                        opt.value = i;
-                        // Show USB vendor/product info if available, otherwise generic label
-                        const info = p.getInfo ? p.getInfo() : {};
-                        opt.textContent = info.usbVendorId
-                            ? `Port ${i + 1} (VID:${info.usbVendorId.toString(16).toUpperCase()} PID:${info.usbProductId.toString(16).toUpperCase()})`
-                            : `Port ${i + 1} (USB Serial)`;
+                        opt.value = i; opt.textContent = `Port ${i + 1} (USB)`;
                         sel.appendChild(opt);
                     });
-                    // Auto-select if only one option
-                    if (ports.length === 1) sel.value = '0';
-                } else {
-                    section.style.display = 'none';
                 }
+                sel.value = prev;
             } catch (err) { console.error('refreshPorts:', err); }
         }
 
-        // PRIMARY: opens browser's native "Select a port" dialog
-        async function requestAndConnect() {
-            if (!('serial' in navigator)) {
-                alert('Web Serial is not supported in this browser.\nPlease use Chrome or Edge (desktop).');
-                return;
-            }
+        async function connectSerial() {
             try {
-                // This triggers the browser permission dialog — user picks from all available ports
-                port = await navigator.serial.requestPort();
-                await openPort(port);
-            } catch (err) {
-                if (err.name === 'NotFoundError') {
-                    // User closed the picker without selecting — not an error
-                    return;
-                }
-                console.error('requestAndConnect:', err);
-                alert('Failed to connect: ' + err.message);
-                updateConnectionStatus(false);
-            }
-        }
-
-        // SECONDARY: connect to a port already in the dropdown
-        async function connectSavedPort() {
-            try {
-                const sel  = document.getElementById('portSelect');
-                const idx  = parseInt(sel.value);
-                if (isNaN(idx)) { alert('Please select a port from the list'); return; }
+                const sel   = document.getElementById('portSelect');
+                const idx   = parseInt(sel.value);
+                if (isNaN(idx)) { alert('Please select a serial port'); return; }
 
                 const ports = await navigator.serial.getPorts();
-                if (idx >= ports.length) { alert('Port no longer available — try refreshing'); return; }
+                if (idx >= ports.length) { alert('Selected port no longer available'); return; }
 
                 port = ports[idx];
-                await openPort(port);
-            } catch (err) {
-                console.error('connectSavedPort:', err);
-                alert('Failed to connect: ' + err.message);
-                updateConnectionStatus(false);
-            }
-        }
-
-        // Shared open logic used by both connect paths
-        async function openPort(serialPort) {
-            try {
-                await serialPort.open({ baudRate: 115200 });
+                await port.open({ baudRate: 115200 });
                 isConnected = true;
                 updateConnectionStatus(true);
-                await refreshPorts(); // update dropdown with newly granted port
                 readSerialData();
             } catch (err) {
-                // Port might already be open (e.g. another tab) — give a clearer message
-                if (err.message && err.message.includes('already open')) {
-                    alert('Port is already open in another tab or application.\nClose it and try again.');
-                } else {
-                    throw err;
-                }
+                console.error('connectSerial:', err);
+                alert('Failed to connect: ' + err.message);
+                updateConnectionStatus(false);
             }
         }
 
@@ -412,9 +323,8 @@
         }
 
         function stopSession() {
-            isSessionActive    = false;
-            isRecording        = false;
-            recordingStartTime = 0;
+            isSessionActive = false;
+            isRecording     = false;
             clearInterval(recordingInterval);
             document.getElementById('startBtn').disabled = false;
             document.getElementById('stopBtn').disabled  = true;
@@ -461,14 +371,12 @@
         function startRecording(gesture) {
             if (!isSessionActive) return;
 
-            isRecording        = true;
-            currentTimestep    = 0;
-            recordingStartTime = performance.now();
+            isRecording      = true;
+            currentTimestep  = 0;
 
             sendToESP32(`START:${gesture}`);
 
-            // UI countdown -- purely cosmetic, does NOT control when recording stops
-            let remaining = Math.ceil(RECORD_MS / 1000);
+            let remaining = 3;
             setRecordingStatus(`⏺ Recording… ${remaining}s`, 'recording');
 
             recordingInterval = setInterval(() => {
@@ -477,30 +385,15 @@
                     setRecordingStatus(`⏺ Recording… ${remaining}s`, 'recording');
                 } else {
                     clearInterval(recordingInterval);
-                    // Don't call finishRecording() here -- let handleSerialLine()
-                    // trigger it once the timestamp gate fires, so no buffered
-                    // rows are cut off mid-flight.
-                }
-            }, 1000);
-
-            // Safety net: force-finish if serial data stops coming in
-            // (e.g. ESP32 disconnects). Fires RECORD_MS + 500ms grace period.
-            setTimeout(() => {
-                if (isRecording) {
-                    console.warn('Recording safety timeout fired');
                     finishRecording();
                 }
-            }, RECORD_MS + 500);
+            }, 1000);
         }
 
         function finishRecording() {
-            if (!isRecording) return;   // guard against double-call
             isRecording = false;
-            clearInterval(recordingInterval);
             sendToESP32('STOP');
-
-            const rowsCollected = currentTimestep;
-            setRecordingStatus(`✓ Recorded — ${rowsCollected} rows`, 'active');
+            setRecordingStatus('✓ Recorded', 'active');
 
             currentGestureIndex++;
             currentRecordingId++;
@@ -558,20 +451,9 @@
         function handleSerialLine(line) {
             if (!isRecording) return;
 
-            // -- Timestamp gate -------------------------------------------------
-            // Check elapsed time first. If we have hit RECORD_MS, trigger
-            // finishRecording() BEFORE pushing this row so the cutoff is clean.
-            // This is more accurate than setInterval because it uses the actual
-            // wall-clock time the data arrived, not a JS timer tick.
-            const elapsed = performance.now() - recordingStartTime;
-            if (elapsed >= RECORD_MS) {
-                finishRecording();
-                return;
-            }
-
             const parts = line.split(',').map(s => s.trim()).filter(s => s.length > 0);
 
-            // Need exactly 24 values (6 IMUs x 4 quaternion components)
+            // Need exactly 24 values (6 IMUs × 4 quaternion components)
             if (parts.length < 24) return;
 
             const values = parts.slice(0, 24).map(Number);
@@ -595,13 +477,6 @@
 
             sessionRows.push(row);
             currentTimestep++;
-
-            // Live progress bar in the status label
-            const pct = Math.min(100, Math.round((elapsed / RECORD_MS) * 100));
-            const bar = '█'.repeat(Math.floor(pct / 5)) + '░'.repeat(20 - Math.floor(pct / 5));
-            const secs = ((RECORD_MS - elapsed) / 1000).toFixed(1);
-            setRecordingStatus(`⏺ ${bar} ${secs}s (${currentTimestep} rows)`, 'recording');
-
             updateSessionStats();
         }
 
@@ -668,5 +543,305 @@
             log.scrollTop = log.scrollHeight;
         }
     </script>
+<!--
+    <script>
+        const GESTURES = ['Base', 'Gesture1', 'Gesture2', 'Gesture3', 'Gesture4'];
+        
+        function getGestureImagePath(gestureName) {
+            return `./${gestureName}.jpg`;
+        }
+        
+        let port = null;
+        let isConnected = false;
+        let isSessionActive = false;
+        let currentGestureIndex = 0;
+        let gestureSequence = [];
+        let recordingTimeout = null;
+        let sessionData = [];
+        let currentGestureData = [];
+        
+        // Initialize port list on page load
+        window.addEventListener('load', async () => {
+            await refreshPorts();
+        });
+        
+        async function refreshPorts() {
+            try {
+                const ports = await navigator.serial.getPorts();
+                const portSelect = document.getElementById('portSelect');
+                const currentSelection = portSelect.value;
+                
+                // Clear existing options except the first one
+                while (portSelect.options.length > 1) {
+                    portSelect.remove(1);
+                }
+                
+                if (ports.length === 0) {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'No ports found';
+                    option.disabled = true;
+                    portSelect.appendChild(option);
+                } else {
+                    ports.forEach((port, index) => {
+                        const option = document.createElement('option');
+                        option.value = index;
+                        option.textContent = `Port ${index + 1} (USB)`;
+                        portSelect.appendChild(option);
+                    });
+                }
+                
+                // Restore previous selection if it still exists
+                portSelect.value = currentSelection;
+            } catch (err) {
+                console.error('Error enumerating ports:', err);
+            }
+        }
+        
+        async function connectSerial() {
+            try {
+                const portSelect = document.getElementById('portSelect');
+                const selectedIndex = parseInt(portSelect.value);
+                
+                if (isNaN(selectedIndex)) {
+                    alert('Please select a serial port');
+                    return;
+                }
+                
+                const ports = await navigator.serial.getPorts();
+                if (selectedIndex >= ports.length) {
+                    alert('Selected port is no longer available');
+                    return;
+                }
+                
+                port = ports[selectedIndex];
+                await port.open({ baudRate: 115200 });
+                isConnected = true;
+                updateConnectionStatus(true);
+                readSerialData();
+            } catch (err) {
+                console.error('Connection failed:', err);
+                alert('Failed to connect: ' + err.message);
+                updateConnectionStatus(false);
+            }
+        }
+
+
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connectionStatus');
+            const startBtn = document.getElementById('startBtn');
+            if (connected) {
+                status.textContent = '✓ Connected';
+                status.className = 'status status-active';
+                startBtn.disabled = false;
+            } else {
+                status.textContent = '✗ Disconnected';
+                status.className = 'status status-inactive';
+                startBtn.disabled = true;
+            }
+        }
+        
+        function startSession() {
+            isSessionActive = true;
+            currentGestureIndex = 0;
+            gestureSequence = generateGestureSequence(10);
+            sessionData = [];
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+            document.getElementById('dataLog').innerHTML = '';
+            nextGesture();
+        }
+        
+        function stopSession() {
+            isSessionActive = false;
+            currentGestureIndex = 0;
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('gestureDisplay').textContent = 'Session Ended';
+            document.getElementById('recordingStatus').textContent = 'Ready';
+            document.getElementById('recordingStatus').className = 'status status-inactive';
+            clearTimeout(recordingTimeout);
+        }
+        
+        function generateGestureSequence(count) {
+            const sequence = [];
+            for (let i = 0; i < count; i++) {
+                sequence.push(GESTURES[Math.floor(Math.random() * GESTURES.length)]);
+            }
+            return sequence;
+        }
+        
+        function nextGesture() {
+            if (!isSessionActive || currentGestureIndex >= gestureSequence.length) {
+                stopSession();
+                return;
+            }
+            
+            const gesture = gestureSequence[currentGestureIndex];
+            const gestureDisplay = document.getElementById('gestureDisplay');
+            gestureDisplay.innerHTML = `<img src="${getGestureImagePath(gesture)}" alt="${gesture}">`;
+            document.getElementById('gestureCounter').textContent = 
+                `Gestures: ${currentGestureIndex}/${gestureSequence.length}`;
+            
+            // Show countdown before recording starts
+            let countdown = 2;
+            const statusElement = document.getElementById('recordingStatus');
+            statusElement.textContent = `Starting in ${countdown}s...`;
+            statusElement.className = 'status status-inactive';
+            
+            const countdownInterval = setInterval(() => {
+                countdown--;
+                if (countdown > 0) {
+                    statusElement.textContent = `Starting in ${countdown}s...`;
+                } else {
+                    clearInterval(countdownInterval);
+                    startRecording(gesture);
+                }
+            }, 1000);
+        }
+        
+        function startRecording(gesture) {
+            if (!isSessionActive) return;
+            
+            const status = document.getElementById('recordingStatus');
+            status.className = 'status status-recording';
+            
+            currentGestureData = [];
+            sendToESP32(`START:${gesture}`);
+            
+            // Show countdown during recording
+            let recordingCountdown = 3;
+            status.textContent = `⏺ Recording... ${recordingCountdown}s`;
+            
+            const countdownInterval = setInterval(() => {
+                recordingCountdown--;
+                if (recordingCountdown > 0) {
+                    status.textContent = `⏺ Recording... ${recordingCountdown}s`;
+                } else {
+                    clearInterval(countdownInterval);
+                    finishRecording();
+                }
+            }, 1000);
+            
+            recordingTimeout = countdownInterval;
+        }
+        
+        function finishRecording() {
+            const status = document.getElementById('recordingStatus');
+            status.textContent = '✓ Recorded';
+            status.className = 'status status-active';
+            
+            sendToESP32('STOP');
+            
+            // Store the gesture data with label
+            if (currentGestureData.length > 0) {
+                sessionData.push({
+                    gesture: gestureSequence[currentGestureIndex],
+                    timestamp: new Date().toISOString(),
+                    data: currentGestureData
+                });
+            }
+            
+            currentGestureIndex++;
+            setTimeout(nextGesture, 1500);
+        }
+        
+        function sendToESP32(message) {
+            if (!port) return;
+            const writer = port.writable.getWriter();
+            writer.write(new TextEncoder().encode(message + '\n'));
+            writer.releaseLock();
+        }
+
+        async function readSerialData() {
+            if (!port) return;
+
+            const reader = port.readable.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            try {
+                while (true) {
+                   const { value, done } = await reader.read();
+                   if (done) break;
+
+                    // Decode chunk and append to buffer
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // Split by newline
+                    const lines = buffer.split('\n');
+
+                    // Keep last incomplete line in buffer
+                    buffer = lines.pop();
+
+                    for (let line of lines) {
+                        line = line.trim();
+                        if (line.length === 0) continue;
+
+                        displayDataLog(line);
+
+                        if (isSessionActive) {
+                            currentGestureData.push(line);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Read error:', err);
+            } finally {
+                reader.releaseLock();
+            }
+        }
+       
+        function displayDataLog(data) {
+            const logElement = document.getElementById('dataLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'data-log-entry';
+            entry.textContent = `[${timestamp}] ${data}`;
+            logElement.appendChild(entry);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        function downloadData() {
+            if (sessionData.length === 0) {
+                alert('No data to download. Start a session first.');
+                return;
+            }
+            
+            // Create CSV content
+            let csvContent = 'Gesture,Data\n';
+            sessionData.forEach(recording => {
+                const dataStr = recording.data.join(' ').replace(/"/g, '""');
+                csvContent += `"${recording.gesture}","${dataStr}"\n`;
+            });
+            
+            // Create blob and download
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `gesture_data_${new Date().toISOString().slice(0, 10)}_${new Date().getTime()}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+        function downloadCSV(gestureName, repetition, data) {
+            const header = "timestamp,q0,q1,q2,q3,...\n";
+            const csvContent = header + data.join("\n");
+
+            const blob = new Blob([csvContent], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${gestureName}_rep_${repetition}.csv`;
+            a.click();
+
+            URL.revokeObjectURL(url);
+        }
+    </script>
+-->
+
 </body>
 </html>
