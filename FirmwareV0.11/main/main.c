@@ -26,7 +26,7 @@
 
 //SPI stuff
 #define SPI_HOST    SPI2_HOST
-#define SPI_CLK_HZ  (5 * 100 * 1000)  // 500kHz
+#define SPI_CLK_HZ  (1* 1000 * 1000/10)  // 100kHz
 #define SPI_MODE    0
 #define SPI_BITS    8
 
@@ -35,7 +35,7 @@ extern const uint8_t bhi360_firmware_image[];
 
 //debugging
 const char *TAG = "Testing";
-
+    
 //Addresses and Registers
 const uint8_t SensorAddress = 0x28; //Default for BHI360
 const float SensorSampleRate = 100.0f; //sample rate in HZ I think
@@ -163,13 +163,13 @@ void app_main(void) {
     /**
      * Load firmware and boot from RAM
      */
-    ESP_LOGI(TAG, "Uploading firmware..");
+    /*ESP_LOGI(TAG, "Uploading firmware..");
     if (bhy2_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev) != BHY2_OK ||
         bhy2_boot_from_ram(&dev) != BHY2_OK) {
         ESP_LOGI(TAG, "Firmware load failed");
         return;
     }
-    ESP_LOGI(TAG, "Firmware Uploadqed!");
+    ESP_LOGI(TAG, "Firmware Uploadqed!");*/
     
     /**
      * Update virtual sensor list & 
@@ -182,7 +182,7 @@ void app_main(void) {
     bhy2_set_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, SensorSampleRate, SensorLatency, &dev);
     ESP_LOGI(TAG, "BHi360 ready, polling for rotation vector");
     
-    while (1) {
+    /*while (1) {
         esp_err_t err = bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
         if(err != BHY2_OK){
             ESP_LOGW("SPI Error", "FIFO err: %d", err);
@@ -190,5 +190,14 @@ void app_main(void) {
         vTaskDelay(pdMS_TO_TICKS(1));
         quatToEuler(quat);
         vTaskDelay(pdMS_TO_TICKS(10));  // 10ms yield 100hz
+    }*/
+    while(1) {
+    if (bhi360_spi_read(0x01, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
+        ESP_LOGI(TAG, "SPI OK! CHIP_ID=0x%02x (expect 0xC8)", chip_id[0]);
+    } else {
+        ESP_LOGE(TAG, "SPI FAIL - No device");
+        while(1) vTaskDelay(pdMS_TO_TICKS(1000));  // Hang safe
+    }
+    vTaskDelay(5);
     }
 }
