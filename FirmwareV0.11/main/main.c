@@ -4,7 +4,7 @@
 #include "esp_timer.h"
 #include "driver/spi_master.h"
 #include "bhi3.h"
-#include "Bosch_Shuttle3_BHI360.fw.h"
+#include "BHI360.fw.h"
 #include "bhi360_spi.h"
 #include "stdint.h"
 #include "math.h"
@@ -26,12 +26,13 @@
 
 //SPI stuff
 #define SPI_HOST    SPI2_HOST
-#define SPI_CLK_HZ  (1* 1000 * 1000/10)  // 100kHz
+#define SPI_CLK_HZ  (1* 1000 * 1000)  // 1MHz
 #define SPI_MODE    0
 #define SPI_BITS    8
 
 // Firmware images
-extern const uint8_t bhi360_firmware_image[]; 
+extern const uint8_t bhy2_firmware_image[]; 
+const uint32_t bhy2_firmware_image_size = 127228; //size of the base bhi360 firmware
 
 //debugging
 const char *TAG = "Testing";
@@ -164,23 +165,24 @@ void app_main(void) {
      * Load firmware and boot from RAM
      */
     /*ESP_LOGI(TAG, "Uploading firmware..");
-    if (bhy2_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev) != BHY2_OK ||
+    if (bhy2_upload_firmware_to_ram(bhy2_firmware_image, bhy2_firmware_image_size, &dev) != BHY2_OK ||
         bhy2_boot_from_ram(&dev) != BHY2_OK) {
         ESP_LOGI(TAG, "Firmware load failed");
         return;
+        
     }
-    ESP_LOGI(TAG, "Firmware Uploadqed!");*/
+    ESP_LOGI(TAG, "Firmware Uploadqed!"); */
     
     /**
      * Update virtual sensor list & 
      * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
      */
-    bhy2_update_virtual_sensor_list(&dev);
+    /*bhy2_update_virtual_sensor_list(&dev);
     bhy2_register_fifo_parse_callback(BHI360_VIRTUAL_SENSOR_ID, rot_vec_cb, NULL, &dev);
     ESP_LOGI(TAG, "Updated virtual sensor and fifo parse callback");
     
     bhy2_set_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, SensorSampleRate, SensorLatency, &dev);
-    ESP_LOGI(TAG, "BHi360 ready, polling for rotation vector");
+    ESP_LOGI(TAG, "BHi360 ready, polling for rotation vector"); */
     
     /*while (1) {
         esp_err_t err = bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
@@ -189,7 +191,7 @@ void app_main(void) {
         }
         vTaskDelay(pdMS_TO_TICKS(1));
         quatToEuler(quat);
-        vTaskDelay(pdMS_TO_TICKS(10));  // 10ms yield 100hz
+        vTaskDelay(pdMS_TO_TICKS(5));  // 10ms yield 100hz
     }*/
     while(1) {
     if (bhi360_spi_read(0x01, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
