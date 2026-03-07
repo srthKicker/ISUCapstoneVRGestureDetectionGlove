@@ -39,9 +39,21 @@ int8_t bhi360_spi_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
 
 
 
-//Simple delay function to pass to the BHI360 drivers.
-void bhi360_delay_us(uint32_t period, void *intf_ptr){
-    ets_delay_us(period);
+///Improved delay function that yields for >1ms delays but busy waits for more precision
+//on shorter delays
+void bhi360_delay_us(uint32_t period, void *intf_ptr)
+{
+    // For long delays, use FreeRTOS tick-based delay
+    if (period >= 1000) {
+        uint32_t ms = period / 1000;
+        if (ms == 0) {
+            ms = 1;
+        }
+        vTaskDelay(pdMS_TO_TICKS(ms));
+    } else {
+        // Sub‑ms delays: busy wait is OK
+        ets_delay_us(period);
+    }
 }
 
 

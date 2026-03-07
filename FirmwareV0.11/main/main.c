@@ -142,9 +142,11 @@ void app_main(void) {
     
     //debug - test SPI communication
     ESP_LOGI(TAG, "3. Testing SPI...");
+    vTaskDelay(pdMS_TO_TICKS(5)); //quick delay to make sure the reset worked
     uint8_t chip_id[1];
     if (bhi360_spi_read(0x01, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
-        ESP_LOGI(TAG, "SPI OK! CHIP_ID=0x%02x (expect 0xC8)", chip_id[0]);
+        ESP_LOGI(TAG, "SPI OK! CHIP_ID=0x%02x (expect 0x03?)", chip_id[0]);
+        
     } else {
         ESP_LOGE(TAG, "SPI FAIL - No device");
         while(1) vTaskDelay(pdMS_TO_TICKS(1000));  // Hang safe
@@ -164,27 +166,27 @@ void app_main(void) {
     /**
      * Load firmware and boot from RAM
      */
-    /*ESP_LOGI(TAG, "Uploading firmware..");
+    ESP_LOGI(TAG, "Uploading firmware..");
     if (bhy2_upload_firmware_to_ram(bhy2_firmware_image, bhy2_firmware_image_size, &dev) != BHY2_OK ||
         bhy2_boot_from_ram(&dev) != BHY2_OK) {
         ESP_LOGI(TAG, "Firmware load failed");
         return;
         
     }
-    ESP_LOGI(TAG, "Firmware Uploadqed!"); */
+    ESP_LOGI(TAG, "Firmware Uploadqed!"); 
     
     /**
      * Update virtual sensor list & 
      * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
      */
-    /*bhy2_update_virtual_sensor_list(&dev);
+    bhy2_update_virtual_sensor_list(&dev);
     bhy2_register_fifo_parse_callback(BHI360_VIRTUAL_SENSOR_ID, rot_vec_cb, NULL, &dev);
     ESP_LOGI(TAG, "Updated virtual sensor and fifo parse callback");
     
     bhy2_set_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, SensorSampleRate, SensorLatency, &dev);
-    ESP_LOGI(TAG, "BHi360 ready, polling for rotation vector"); */
+    ESP_LOGI(TAG, "BHi360 ready, polling for rotation vector"); 
     
-    /*while (1) {
+    while (1) {
         esp_err_t err = bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
         if(err != BHY2_OK){
             ESP_LOGW("SPI Error", "FIFO err: %d", err);
@@ -192,8 +194,8 @@ void app_main(void) {
         vTaskDelay(pdMS_TO_TICKS(1));
         quatToEuler(quat);
         vTaskDelay(pdMS_TO_TICKS(5));  // 10ms yield 100hz
-    }*/
-    while(1) {
+    }
+    /*while(1) {
     if (bhi360_spi_read(0x01, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
         ESP_LOGI(TAG, "SPI OK! CHIP_ID=0x%02x (expect 0xC8)", chip_id[0]);
     } else {
@@ -201,5 +203,5 @@ void app_main(void) {
         while(1) vTaskDelay(pdMS_TO_TICKS(1000));  // Hang safe
     }
     vTaskDelay(5);
-    }
+    }*/
 }
