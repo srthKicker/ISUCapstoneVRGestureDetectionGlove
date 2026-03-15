@@ -2,7 +2,7 @@
 #include <MPU9250_WE.h>
 #include <MadgwickAHRS.h>
 
-const int csPin[6] = {22,17,16,4,14,27};  // Chip Select Pin
+const int csPin[6] = {22,17,16,4,26,27};  // Chip Select Pin
 const int mosiPin = 23;  // "MOSI" Pin
 const int misoPin = 19;  // "MISO" Pin
 const int sckPin = 18;  // SCK Pin
