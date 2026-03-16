@@ -30,7 +30,7 @@ extern const uint8_t bhi360_firmware_image[];
 const char *TAG = "Testing";
 //extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
 //Addresses and Registers
-const uint8_t SensorAddress = 0x28; //0x28 if sdo grounded for BHI360 or 0z29 if sdo set to 1.8v
+const uint8_t SensorAddress = 0x70; //0x28 if sdo grounded for BHI360 or 0z29 if sdo set to 1.8v 0x70 is for MUX
 const float SensorSampleRate = 100.0f; //sample rate in HZ I think
 const uint32_t SensorLatency = 0; //Something with buffering and stuff, ill explain later
 

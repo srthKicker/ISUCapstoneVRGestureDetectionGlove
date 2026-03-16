@@ -87,7 +87,7 @@ void bhi360_delay_us(uint32_t period, void *intf_ptr){
 
 // Writes the channel select byte to the PCA9548A
 // PCA9548A takes a single byte: bit 0-7 = channel enable (we only set one at a time)
-static esp_err_t selectMuxChannel(i2cContext_t *cntxt)
+esp_err_t selectMuxChannel(i2cContext_t *cntxt)
 {
     if (cntxt->devHandle == NULL || cntxt->muxChannel < 0) {
         return ESP_OK; // No mux, nothing to do
