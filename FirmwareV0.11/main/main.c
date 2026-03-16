@@ -17,11 +17,12 @@
 #define BHI360_SENSORID_RV 34 //Rotation vector setting 
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
 //Pin numbers
-#define SDA_0 11 //same as mosi with my wiring
-#define SCL_0 12 //same as sck with my wiring
+#define SDA_0 5 //same as mosi with my wiring
+#define SCL_0 6 //same as sck with my wiring
 //I2C stuff
 #define I2C_RATE_HZ 200000 //200khz
 #define I2C_TIMEOUT_US 1000 //1ms timeout for clock
+#define CHANNEL 0 //testing I2C Mux channel number will add into context
 // Firmware images
 extern const uint8_t bhi360_firmware_image[]; 
 //const uint32_t bhi360_firmware_size = 130312; //The size of the firmware currently
@@ -129,6 +130,7 @@ void app_main(void) {
         .busHandle = i2cBusHandle,
         .devHandle = i2cDevHandle,
         .devConfig = i2cDeviceConfig,
+        .muxChannel = CHANNEL,
     };
     //struct bhy2_virt_sensor_conf virtualSensorConf;
 

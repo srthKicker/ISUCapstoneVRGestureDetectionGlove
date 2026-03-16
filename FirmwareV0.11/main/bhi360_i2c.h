@@ -21,6 +21,7 @@ typedef struct i2cContext {
     i2c_master_bus_config_t busConfig;
     i2c_master_dev_handle_t devHandle;
     i2c_master_bus_handle_t busHandle;
+    uint8_t muxChannel;
 } i2cContext_t;
 
 #endif //BHI360_I2C_H

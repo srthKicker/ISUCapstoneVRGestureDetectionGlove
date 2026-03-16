@@ -83,6 +83,7 @@ void bhi360_delay_us(uint32_t period, void *intf_ptr){
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "driver/i2c_master.h"
 #include "bhi3.h"
 #include "Bosch_Shuttle3_BHI360.fw.h"
@@ -98,10 +99,10 @@ void bhi360_delay_us(uint32_t period, void *intf_ptr){
 #define BHI360_SENSORID_RV 34 //Rotation vector setting 
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
 //Pin numbers
-#define SDA_0 16
-#define SCL_0 17
+#define SDA_0 5 //same as mosi with my wiring
+#define SCL_0 6 //same as sck with my wiring
 //I2C stuff
-#define I2C_RATE_HZ 100000 //100khz
+#define I2C_RATE_HZ 200000 //200khz
 #define I2C_TIMEOUT_US 1000 //1ms timeout for clock
 // Firmware images
 extern const uint8_t bhi360_firmware_image[]; 
@@ -110,7 +111,7 @@ extern const uint8_t bhi360_firmware_image[];
 const char *TAG = "Testing";
 //extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
 //Addresses and Registers
-const uint8_t SensorAddress = 0x28; //Default for BHI360, change for I2C multiplexer when that gets added
+const uint8_t SensorAddress = 0x28; //0x28 if sdo grounded for BHI360 or 0z29 if sdo set to 1.8v
 const float SensorSampleRate = 100.0f; //sample rate in HZ I think
 const uint32_t SensorLatency = 0; //Something with buffering and stuff, ill explain later
 
@@ -119,26 +120,30 @@ const uint32_t SensorLatency = 0; //Something with buffering and stuff, ill expl
 static uint8_t fifo_buf[4096]; // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed
 static float quat[4];
 
+
+//Debug function to visualize whats going on
+//I just found this logic, i dont know how it works but it seems to lol
 static void quatToEuler(const float *q) {
-    ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", q[0], q[1], q[2], q[3]);
-    
-    // Extract Euler angles (radians): roll (x), pitch (y), yaw (z) in 3-2-1 sequence [web:1]
     float sinr_cosp = 2.0f * (q[0] * q[1] + q[2] * q[3]);
-    float cosr_cosp = 1.0f - 2.0f * (q[1] * q[1] + q[2] * q[2]);
+    float cosr_cosp = 1.0f - 2.0f * (q[1]*q[1] + q[2]*q[2]);
     float roll = atan2f(sinr_cosp, cosr_cosp);
     
-    float sinp = sqrtf(1.0f + 2.0f * (q[0] * q[2] - q[1] * q[3]));
-    float cosp = sqrtf(1.0f - 2.0f * (q[0] * q[2] - q[1] * q[3]));
-    float pitch = 2.0f * atan2f(sinp, cosp) - M_PI / 2.0f;
+    float sinp = 2.0f * (q[0] * q[2] - q[3] * q[1]);  // Fixed: direct sin_pitch
+    float pitch;
+    if (fabsf(sinp) >= 1.0f) {
+        pitch = copysignf(M_PI / 2.0f, sinp);  // Gimbal lock handling
+    } else {
+        pitch = asinf(sinp);
+    }
     
     float siny_cosp = 2.0f * (q[0] * q[3] + q[1] * q[2]);
-    float cosy_cosp = 1.0f - 2.0f * (q[2] * q[2] + q[3] * q[3]);
+    float cosy_cosp = 1.0f - 2.0f * (q[2]*q[2] + q[3]*q[3]);
     float yaw = atan2f(siny_cosp, cosy_cosp);
     
-    // Convert to degrees and print
     ESP_LOGI("Euler", "roll=%.1f° pitch=%.1f° yaw=%.1f°", 
              roll * 180.0f / M_PI, pitch * 180.0f / M_PI, yaw * 180.0f / M_PI);
 }
+
 
 //Scales raw data to correct data amount.
 static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv) {
@@ -154,7 +159,7 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
         quat[1] = q[1];
         quat[2] = q[2];
         quat[3] = q[3];
-        ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", q[0], q[1], q[2], q[3]);
+
     }
 }
 
@@ -182,7 +187,7 @@ void app_main(void) {
         .scl_io_num = SCL_0,
         .sda_io_num = SDA_0,
         .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true,
+        .flags.enable_internal_pullup = false,
     };
     i2c_device_config_t i2cDeviceConfig = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7, //bhi360 uses 7 bit addresses
@@ -212,10 +217,10 @@ void app_main(void) {
     //debug
     ESP_LOGI(TAG, "3. Testing I2C...");
     uint8_t chip_id[1];
-    if (bhi360_i2c_read(0x00, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
+    if (bhi360_i2c_read(0x01, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
         ESP_LOGI(TAG, "I2C OK! CHIP_ID=0x%02x (expect 0xC8)", chip_id[0]);
     } else {
-        ESP_LOGE(TAG, "I2C FAIL - No device @0x28");
+        ESP_LOGE(TAG, "I2C FAIL - No device @0x%02x", SensorAddress);
         while(1) vTaskDelay(pdMS_TO_TICKS(1000));  // Hang safe
     }
     /**
@@ -255,10 +260,16 @@ void app_main(void) {
     ESP_LOGI(TAG, "BHi360 ready, polling for rotation vecotr"); //debug
     //int count = 0;
     while (1) {
-        bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
-        //quatToEuler(quat);
+        esp_err_t err = bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
+        if(err != BHY2_OK){
+            ESP_LOGW("I2C Error", "FIFO err: %d", err);
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
+        //ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", quat[0], quat[1], quat[2], quat[3]);
+        quatToEuler(quat);
         //count++;
-        vTaskDelay(pdMS_TO_TICKS(5));  // 5ms yield 200hz
+
+        vTaskDelay(pdMS_TO_TICKS(10));  // 5ms yield 200hz 10ms yield 100hz
     }
 }
 // bhi360_i2c.h
