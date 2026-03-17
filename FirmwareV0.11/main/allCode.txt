@@ -5,10 +5,17 @@
 #include "bhi360_i2c.h" //Header file we are defining
 #include <rom/ets_sys.h> //For delay function
 #include "bhi3.h" //For constants that the sensor might send over.
-//#define SDA_0 21
-//#define SCL_0 22
-//#define BEGIN_DELAY_TICKS 10
+
 #define I2C_TIMEOUT_MS 500 // 1 second timeout, can change
+#define CHANNEL 0 //testing I2C Mux channel number will add into context
+
+// Writes the channel select byte to the PCA9548A
+// PCA9548A takes a single byte: bit 0-7 = channel enable (we only set one at a time)
+esp_err_t selectMuxChannel(i2cContext_t *cntxt)
+{
+    uint8_t channel_byte = (1 << cntxt->muxChannel); // e.g. channel 2 → 00000100
+    return i2c_master_transmit(cntxt->muxDevHandle, &channel_byte, 1, I2C_TIMEOUT_MS);
+}
 
 //Reads a specified number of bytes over i2c using the modern form
 //Pass a i2c_master_dev_handle_t into intf_ptr as &devHandleName
@@ -16,6 +23,10 @@ int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_
 {
     // Cast the interface pointer to the ESP-IDF I2C device handle
     i2cContext_t * cntxt = (i2cContext_t *)intf_ptr;
+
+    //Select the i2c mux channel we are using
+    if(cntxt->usingMUX) selectMuxChannel(cntxt);
+
     i2c_master_dev_handle_t devHandle = cntxt->devHandle;
     // First write the register we wanna read from
     //Then read length from that register
@@ -31,12 +42,17 @@ int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_
     return (ret == ESP_OK) ? 0 : -1;
 }
 
-/*
+
 //Writes a specified number of bytes over i2c using the modern form
-int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
+//Stack version of this method, heap method is below
+/*int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
 {
     i2cContext_t * cntxt = (i2cContext_t *)intf_ptr;
     i2c_master_dev_handle_t devHandle = cntxt->devHandle;
+
+    //Select the i2c mux channel we are using
+    if(cntxt->usingMUX) selectMuxChannel(cntxt);
+    
 
     // Build a buffer: [regAddr][data...]
     uint8_t buf[len + 1];
@@ -59,6 +75,9 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
     i2cContext_t *cntxt = (i2cContext_t *)intf_ptr;
     i2c_master_dev_handle_t devHandle = cntxt->devHandle;
 
+    //Select the i2c mux channel we are using
+    if(cntxt->usingMUX) selectMuxChannel(cntxt);
+
     uint8_t *buf = malloc(len + 1);
     if (!buf) return -1;
 
@@ -76,7 +95,6 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
 void bhi360_delay_us(uint32_t period, void *intf_ptr){
     ets_delay_us(period);
 }
-
 
 
 // main.c
@@ -102,8 +120,10 @@ void bhi360_delay_us(uint32_t period, void *intf_ptr){
 #define SDA_0 5 //same as mosi with my wiring
 #define SCL_0 6 //same as sck with my wiring
 //I2C stuff
-#define I2C_RATE_HZ 200000 //200khz
-#define I2C_TIMEOUT_US 1000 //1ms timeout for clock
+#define I2C_RATE_HZ 100000 //The clock frequency for i2c
+#define I2C_TIMEOUT_US 1000 //1ms timeout for clock (idk what this means)
+#define CHANNEL 0 //testing I2C Mux channel number will add into context
+#define USING_MUX false //Whether or not to control the mux in the i2c functions
 // Firmware images
 extern const uint8_t bhi360_firmware_image[]; 
 //const uint32_t bhi360_firmware_size = 130312; //The size of the firmware currently
@@ -112,6 +132,7 @@ const char *TAG = "Testing";
 //extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
 //Addresses and Registers
 const uint8_t SensorAddress = 0x28; //0x28 if sdo grounded for BHI360 or 0z29 if sdo set to 1.8v
+const uint8_t MuxAddress = 0x70; // 0x70 is for MUX when all address pins are untouched
 const float SensorSampleRate = 100.0f; //sample rate in HZ I think
 const uint32_t SensorLatency = 0; //Something with buffering and stuff, ill explain later
 
@@ -180,7 +201,7 @@ void app_main(void) {
     //Context for i2c functions, include port MCU will use and address of device. Eventually will change throughout usage
     //to allow communicating with different i2c devices.
 
-    //Modern i2c configuration method
+    //Configure i2c for the bus
     i2c_master_bus_config_t i2cBusConfig = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_NUM_0,
@@ -189,28 +210,47 @@ void app_main(void) {
         .glitch_ignore_cnt = 7,
         .flags.enable_internal_pullup = false,
     };
-    i2c_device_config_t i2cDeviceConfig = {
+
+    //Configure the sensor
+    i2c_device_config_t i2cSensorDeviceConfig = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7, //bhi360 uses 7 bit addresses
         
-        .device_address = SensorAddress, //change in constants at top
-        .scl_speed_hz = I2C_RATE_HZ, //100khz
+        .device_address = SensorAddress, 
+        .scl_speed_hz = I2C_RATE_HZ, 
+        .scl_wait_us = I2C_TIMEOUT_US,
+        .flags.disable_ack_check = 0, //Enable NACK error detection.
+    };
+
+    //Configure the mux device
+    i2c_device_config_t i2cMuxDeviceConfig = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7, //bhi360 uses 7 bit addresses
+        
+        .device_address = MuxAddress, 
+        .scl_speed_hz = I2C_RATE_HZ, 
         .scl_wait_us = I2C_TIMEOUT_US,
         .flags.disable_ack_check = 0, //Enable NACK error detection.
     };
     i2c_master_bus_handle_t i2cBusHandle;
-    i2c_master_dev_handle_t i2cDevHandle;
+    i2c_master_dev_handle_t i2cSensorDevHandle; //To talk to the sensor
+    i2c_master_dev_handle_t i2cMuxDevHandle; //To talk to the mux
 
     ESP_LOGI(TAG, "Declared structs!"); //debug
+    //Link the bus config to the handle we've made
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2cBusConfig, &i2cBusHandle));
-    //Add the device we've made here
-    i2c_master_bus_add_device(i2cBusHandle,&i2cDeviceConfig,&i2cDevHandle);
+    //Add the devices we've made here
+    i2c_master_bus_add_device(i2cBusHandle,&i2cSensorDeviceConfig,&i2cSensorDevHandle);
+    i2c_master_bus_add_device(i2cBusHandle,&i2cMuxDeviceConfig,&i2cMuxDevHandle);
     ESP_LOGI(TAG, "Added i2c device"); //debug
     //We pass this context to every i2c function through intf_ptr (pass by reference)
     i2cContext_t cntxt = {
         .busConfig = i2cBusConfig,
         .busHandle = i2cBusHandle,
-        .devHandle = i2cDevHandle,
-        .devConfig = i2cDeviceConfig,
+        .devHandle = i2cSensorDevHandle,
+        .devConfig = i2cSensorDeviceConfig,
+        .muxDeviceConfig = i2cMuxDeviceConfig,
+        .muxDevHandle = i2cMuxDevHandle,
+        .muxChannel = CHANNEL, //This will change for each device we put in, for testing itll just be one
+        .usingMUX = USING_MUX, //Optional for final product, will use mux if using i2c
     };
     //struct bhy2_virt_sensor_conf virtualSensorConf;
 
@@ -222,7 +262,7 @@ void app_main(void) {
     } else {
         ESP_LOGE(TAG, "I2C FAIL - No device @0x%02x", SensorAddress);
         while(1) vTaskDelay(pdMS_TO_TICKS(1000));  // Hang safe
-    }
+    } 
     /**
      * Initialize BHI360 interface
      * We pass the configuration struct to this as intf_ptr to give us context for everything
@@ -237,6 +277,7 @@ void app_main(void) {
      * Load firmware and boot from RAM
      * */
     ESP_LOGI(TAG, "Uploading firmware.."); //debug
+    ESP_LOGI(TAG, "Firmware size: %d bytes", sizeof(bhi360_firmware_image));
     if (bhy2_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev) != BHY2_OK ||
         bhy2_boot_from_ram(&dev) != BHY2_OK) { //if either upload or boot fails print error
         ESP_LOGI(TAG, "Firmware load failed"); //debug
@@ -260,16 +301,15 @@ void app_main(void) {
     ESP_LOGI(TAG, "BHi360 ready, polling for rotation vecotr"); //debug
     //int count = 0;
     while (1) {
-        esp_err_t err = bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
+        esp_err_t err = bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);//read from sensor
         if(err != BHY2_OK){
             ESP_LOGW("I2C Error", "FIFO err: %d", err);
         }
-        vTaskDelay(pdMS_TO_TICKS(1));
+        vTaskDelay(pdMS_TO_TICKS(100));
         //ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", quat[0], quat[1], quat[2], quat[3]);
         quatToEuler(quat);
         //count++;
 
-        vTaskDelay(pdMS_TO_TICKS(10));  // 5ms yield 200hz 10ms yield 100hz
     }
 }
 // bhi360_i2c.h
@@ -278,6 +318,8 @@ void app_main(void) {
 #include "bhi3.h"  // For function pointer types
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "driver/i2c_master.h" //Modern i2c functions to change over to
+#include "driver/i2c_types.h" //more modern i2c stuff to change over to
 
 /**
  * Simple header file for I2C functions that we want to use in main
@@ -290,13 +332,20 @@ int8_t bhi360_i2c_write(uint8_t reg_addr, const uint8_t *data, uint32_t len, voi
 //Callback function to delay for a bit to allow i2c lines to settle
 //Will adjust to work better with FreeRTOS soon.
 void bhi360_delay_us(uint32_t period, void *intf_ptr);
+//Function to allow us to communicate through a MUX
 
 typedef struct i2cContext {
     i2c_device_config_t devConfig;
     i2c_master_bus_config_t busConfig;
     i2c_master_dev_handle_t devHandle;
     i2c_master_bus_handle_t busHandle;
+    i2c_device_config_t muxDeviceConfig;
+    i2c_master_dev_handle_t muxDevHandle;
+    uint8_t muxChannel;
+    bool usingMUX;
 } i2cContext_t;
+
+esp_err_t selectMuxChannel(i2cContext_t *cntxt);
 
 #endif //BHI360_I2C_H
 //intf_ptr

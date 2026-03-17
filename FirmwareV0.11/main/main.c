@@ -17,12 +17,13 @@
 #define BHI360_SENSORID_RV 34 //Rotation vector setting 
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
 //Pin numbers
-#define SDA_0 5 //same as mosi with my wiring
-#define SCL_0 6 //same as sck with my wiring
+#define SDA_0 8 //same as mosi with my wiring
+#define SCL_0 7 //same as sck with my wiring
 //I2C stuff
-#define I2C_RATE_HZ 200000 //200khz
-#define I2C_TIMEOUT_US 1000 //1ms timeout for clock
+#define I2C_RATE_HZ 50000 //The clock frequency for i2c
+#define I2C_TIMEOUT_US 5000 //timeout for clock stretching (if the device needs a bit longer it stretches the clock somehow)
 #define CHANNEL 0 //testing I2C Mux channel number will add into context
+#define USING_MUX false //Whether or not to control the mux in the i2c functions
 // Firmware images
 extern const uint8_t bhi360_firmware_image[]; 
 //const uint32_t bhi360_firmware_size = 130312; //The size of the firmware currently
@@ -30,7 +31,8 @@ extern const uint8_t bhi360_firmware_image[];
 const char *TAG = "Testing";
 //extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
 //Addresses and Registers
-const uint8_t SensorAddress = 0x70; //0x28 if sdo grounded for BHI360 or 0z29 if sdo set to 1.8v 0x70 is for MUX
+const uint8_t SensorAddress = 0x28; //0x28 if sdo grounded for BHI360 or 0z29 if sdo set to 1.8v
+const uint8_t MuxAddress = 0x70; // 0x70 is for MUX when all address pins are untouched
 const float SensorSampleRate = 100.0f; //sample rate in HZ I think
 const uint32_t SensorLatency = 0; //Something with buffering and stuff, ill explain later
 
@@ -99,7 +101,7 @@ void app_main(void) {
     //Context for i2c functions, include port MCU will use and address of device. Eventually will change throughout usage
     //to allow communicating with different i2c devices.
 
-    //Modern i2c configuration method
+    //Configure i2c for the bus
     i2c_master_bus_config_t i2cBusConfig = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_NUM_0,
@@ -108,29 +110,47 @@ void app_main(void) {
         .glitch_ignore_cnt = 7,
         .flags.enable_internal_pullup = false,
     };
-    i2c_device_config_t i2cDeviceConfig = {
+
+    //Configure the sensor
+    i2c_device_config_t i2cSensorDeviceConfig = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7, //bhi360 uses 7 bit addresses
         
-        .device_address = SensorAddress, //change in constants at top
-        .scl_speed_hz = I2C_RATE_HZ, //100khz
+        .device_address = SensorAddress, 
+        .scl_speed_hz = I2C_RATE_HZ, 
+        .scl_wait_us = I2C_TIMEOUT_US,
+        .flags.disable_ack_check = 0, //Enable NACK error detection.
+    };
+
+    //Configure the mux device
+    i2c_device_config_t i2cMuxDeviceConfig = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7, //bhi360 uses 7 bit addresses
+        
+        .device_address = MuxAddress, 
+        .scl_speed_hz = I2C_RATE_HZ, 
         .scl_wait_us = I2C_TIMEOUT_US,
         .flags.disable_ack_check = 0, //Enable NACK error detection.
     };
     i2c_master_bus_handle_t i2cBusHandle;
-    i2c_master_dev_handle_t i2cDevHandle;
+    i2c_master_dev_handle_t i2cSensorDevHandle; //To talk to the sensor
+    i2c_master_dev_handle_t i2cMuxDevHandle; //To talk to the mux
 
     ESP_LOGI(TAG, "Declared structs!"); //debug
+    //Link the bus config to the handle we've made
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2cBusConfig, &i2cBusHandle));
-    //Add the device we've made here
-    i2c_master_bus_add_device(i2cBusHandle,&i2cDeviceConfig,&i2cDevHandle);
+    //Add the devices we've made here
+    i2c_master_bus_add_device(i2cBusHandle,&i2cSensorDeviceConfig,&i2cSensorDevHandle);
+    i2c_master_bus_add_device(i2cBusHandle,&i2cMuxDeviceConfig,&i2cMuxDevHandle);
     ESP_LOGI(TAG, "Added i2c device"); //debug
     //We pass this context to every i2c function through intf_ptr (pass by reference)
     i2cContext_t cntxt = {
         .busConfig = i2cBusConfig,
         .busHandle = i2cBusHandle,
-        .devHandle = i2cDevHandle,
-        .devConfig = i2cDeviceConfig,
-        .muxChannel = CHANNEL,
+        .devHandle = i2cSensorDevHandle,
+        .devConfig = i2cSensorDeviceConfig,
+        .muxDeviceConfig = i2cMuxDeviceConfig,
+        .muxDevHandle = i2cMuxDevHandle,
+        .muxChannel = CHANNEL, //This will change for each device we put in, for testing itll just be one
+        .usingMUX = USING_MUX, //Optional for final product, will use mux if using i2c
     };
     //struct bhy2_virt_sensor_conf virtualSensorConf;
 
@@ -142,7 +162,7 @@ void app_main(void) {
     } else {
         ESP_LOGE(TAG, "I2C FAIL - No device @0x%02x", SensorAddress);
         while(1) vTaskDelay(pdMS_TO_TICKS(1000));  // Hang safe
-    }
+    } 
     /**
      * Initialize BHI360 interface
      * We pass the configuration struct to this as intf_ptr to give us context for everything
@@ -157,6 +177,7 @@ void app_main(void) {
      * Load firmware and boot from RAM
      * */
     ESP_LOGI(TAG, "Uploading firmware.."); //debug
+    ESP_LOGI(TAG, "Firmware size: %d bytes", sizeof(bhi360_firmware_image));
     if (bhy2_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev) != BHY2_OK ||
         bhy2_boot_from_ram(&dev) != BHY2_OK) { //if either upload or boot fails print error
         ESP_LOGI(TAG, "Firmware load failed"); //debug
@@ -180,15 +201,14 @@ void app_main(void) {
     ESP_LOGI(TAG, "BHi360 ready, polling for rotation vecotr"); //debug
     //int count = 0;
     while (1) {
-        esp_err_t err = bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);
+        int8_t err = bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);//read from sensor
         if(err != BHY2_OK){
             ESP_LOGW("I2C Error", "FIFO err: %d", err);
         }
-        vTaskDelay(pdMS_TO_TICKS(1));
+        vTaskDelay(pdMS_TO_TICKS(100));
         //ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", quat[0], quat[1], quat[2], quat[3]);
         quatToEuler(quat);
         //count++;
 
-        vTaskDelay(pdMS_TO_TICKS(10));  // 5ms yield 200hz 10ms yield 100hz
     }
 }

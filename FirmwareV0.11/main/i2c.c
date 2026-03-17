@@ -4,11 +4,17 @@
 #include "bhi360_i2c.h" //Header file we are defining
 #include <rom/ets_sys.h> //For delay function
 #include "bhi3.h" //For constants that the sensor might send over.
-//#define SDA_0 21
-//#define SCL_0 22
-//#define BEGIN_DELAY_TICKS 10
+
 #define I2C_TIMEOUT_MS 500 // 1 second timeout, can change
 #define CHANNEL 0 //testing I2C Mux channel number will add into context
+
+// Writes the channel select byte to the PCA9548A
+// PCA9548A takes a single byte: bit 0-7 = channel enable (we only set one at a time)
+esp_err_t selectMuxChannel(i2cContext_t *cntxt)
+{
+    uint8_t channel_byte = (1 << cntxt->muxChannel); // e.g. channel 2 → 00000100
+    return i2c_master_transmit(cntxt->muxDevHandle, &channel_byte, 1, I2C_TIMEOUT_MS);
+}
 
 //Reads a specified number of bytes over i2c using the modern form
 //Pass a i2c_master_dev_handle_t into intf_ptr as &devHandleName
@@ -18,7 +24,7 @@ int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_
     i2cContext_t * cntxt = (i2cContext_t *)intf_ptr;
 
     //Select the i2c mux channel we are using
-    selectMuxChannel(cntxt);
+    if(cntxt->usingMUX) selectMuxChannel(cntxt);
 
     i2c_master_dev_handle_t devHandle = cntxt->devHandle;
     // First write the register we wanna read from
@@ -37,13 +43,14 @@ int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_
 
 
 //Writes a specified number of bytes over i2c using the modern form
-int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
+//Stack version of this method, heap method is below
+/*int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
 {
     i2cContext_t * cntxt = (i2cContext_t *)intf_ptr;
     i2c_master_dev_handle_t devHandle = cntxt->devHandle;
 
     //Select the i2c mux channel we are using
-    selectMuxChannel(cntxt);
+    if(cntxt->usingMUX) selectMuxChannel(cntxt);
     
 
     // Build a buffer: [regAddr][data...]
@@ -59,13 +66,16 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
         I2C_TIMEOUT_MS
     );
     return (ret == ESP_OK) ? 0 : -1;
-} 
+} */
 
 //Allocates on heap instead of on stack to try and fix it
-/*int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
+int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
 {
     i2cContext_t *cntxt = (i2cContext_t *)intf_ptr;
     i2c_master_dev_handle_t devHandle = cntxt->devHandle;
+
+    //Select the i2c mux channel we are using
+    if(cntxt->usingMUX) selectMuxChannel(cntxt);
 
     uint8_t *buf = malloc(len + 1);
     if (!buf) return -1;
@@ -77,7 +87,7 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
 
     free(buf);
     return (ret == ESP_OK) ? 0 : -1;
-}*/
+}
 
 
 //Simple delay function to pass to the BHI360 drivers.
@@ -85,13 +95,3 @@ void bhi360_delay_us(uint32_t period, void *intf_ptr){
     ets_delay_us(period);
 }
 
-// Writes the channel select byte to the PCA9548A
-// PCA9548A takes a single byte: bit 0-7 = channel enable (we only set one at a time)
-esp_err_t selectMuxChannel(i2cContext_t *cntxt)
-{
-    if (cntxt->devHandle == NULL || cntxt->muxChannel < 0) {
-        return ESP_OK; // No mux, nothing to do
-    }
-    uint8_t channel_byte = (1 << cntxt->muxChannel); // e.g. channel 2 → 0b00000100
-    return i2c_master_transmit(cntxt->devHandle, &channel_byte, 1, I2C_TIMEOUT_MS);
-}
