@@ -20,8 +20,8 @@
 #define SDA_0 8 //same as mosi with my wiring
 #define SCL_0 7 //same as sck with my wiring
 //I2C stuff
-#define I2C_RATE_HZ 50000 //The clock frequency for i2c
-#define I2C_TIMEOUT_US 5000 //timeout for clock stretching (if the device needs a bit longer it stretches the clock somehow)
+#define I2C_RATE_HZ 400000 //The clock frequency for i2c
+#define I2C_TIMEOUT_US 2000 //timeout for clock stretching (if the device needs a bit longer it stretches the clock somehow)
 #define CHANNEL 0 //testing I2C Mux channel number will add into context
 #define USING_MUX false //Whether or not to control the mux in the i2c functions
 // Firmware images
@@ -176,6 +176,41 @@ void app_main(void) {
     /**
      * Load firmware and boot from RAM
      * */
+
+     #define NUM_RETRIES 5 //how many times we are willing to sit and wait for this to try to upload
+
+     ESP_LOGI(TAG, "Uploading Firmware");
+     ESP_LOGI(TAG, "Firmware size: %d bytes", sizeof(bhi360_firmware_image));
+    bool uploadOk = false;
+    for( int attempt = 0; attempt < NUM_RETRIES && !uploadOk; attempt ++){
+        ESP_LOGI(TAG, "Attempt %d", attempt);
+        int8_t uploadResult = bhy2_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev);
+        
+        if(uploadResult != BHY2_OK){ //if it fails
+            ESP_LOGE("OOPS", "Try %d failed with uploadResult %d", attempt, uploadResult);
+            vTaskDelay(pdMS_TO_TICKS(200)); //wait a minute before retrying
+        } else{
+                int8_t bootResult = bhy2_boot_from_ram(&dev);
+                if(bootResult != BHY2_OK){ //on boot failure
+                    ESP_LOGE("OOPS", "Try %d failed with bootResult %d", attempt, bootResult);
+                    vTaskDelay(pdMS_TO_TICKS(200));
+                } else{
+                    uploadOk = true;
+                }
+            
+        }
+    }
+    
+    if(!uploadOk) {
+        ESP_LOGE("OOPS", "scratch everything upload/boot failed after retries");
+        return; //exit main
+    }
+
+    ESP_LOGI(TAG, "WHOOO WE UPLOADED");
+
+     
+
+    /* Old version, no retries
     ESP_LOGI(TAG, "Uploading firmware.."); //debug
     ESP_LOGI(TAG, "Firmware size: %d bytes", sizeof(bhi360_firmware_image));
     if (bhy2_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev) != BHY2_OK ||
@@ -183,7 +218,7 @@ void app_main(void) {
         ESP_LOGI(TAG, "Firmware load failed"); //debug
         return;
     }
-    ESP_LOGI(TAG, "Firmware Uploadqed!"); //debug
+    ESP_LOGI(TAG, "Firmware Uploadqed!"); //debug */
     /**
      * Update virtual sensor list & 
      * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
@@ -205,7 +240,7 @@ void app_main(void) {
         if(err != BHY2_OK){
             ESP_LOGW("I2C Error", "FIFO err: %d", err);
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(10));
         //ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", quat[0], quat[1], quat[2], quat[3]);
         quatToEuler(quat);
         //count++;

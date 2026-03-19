@@ -5,7 +5,7 @@
 #include <rom/ets_sys.h> //For delay function
 #include "bhi3.h" //For constants that the sensor might send over.
 
-#define I2C_TIMEOUT_MS 500 // 1 second timeout, can change
+#define I2C_TIMEOUT_MS 5000 // 1 second timeout, can change
 #define CHANNEL 0 //testing I2C Mux channel number will add into context
 
 // Writes the channel select byte to the PCA9548A
