@@ -71,10 +71,10 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
     if (info->sensor_id == BHI360_VIRTUAL_SENSOR_ID) { 
         int16_t *q_raw = (int16_t *)info->data_ptr;
         float q[4] = {
-            q_raw[0] / 16384.0f,  // Scale factor from defs
-            q_raw[1] / 16384.0f,
-            q_raw[2] / 16384.0f,
-            q_raw[3] / 16384.0f
+            q_raw[3] / 16384.0f,  //w   // Scale factor from defs
+            q_raw[0] / 16384.0f, //x
+            q_raw[1] / 16384.0f, //y
+            q_raw[2] / 16384.0f //z
         };
         quat[0] = q[0];
         quat[1] = q[1];
