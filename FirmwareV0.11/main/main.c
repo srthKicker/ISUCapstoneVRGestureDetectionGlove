@@ -16,6 +16,7 @@
 #define BHI360_VIRTUAL_SENSOR_ID 37 //Change to change virtual sensor value
 #define BHI360_SENSORID_RV 34 //Rotation vector setting 
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
+#define QUAT_SCALING_FACTOR 16384.0f
 //Pin numbers
 #define SDA_0 8 //same as mosi with my wiring
 #define SCL_0 7 //same as sck with my wiring
@@ -23,7 +24,7 @@
 #define I2C_RATE_HZ 400000 //The clock frequency for i2c
 #define I2C_TIMEOUT_US 2000 //timeout for clock stretching (if the device needs a bit longer it stretches the clock somehow)
 #define CHANNEL 0 //testing I2C Mux channel number will add into context
-#define USING_MUX false //Whether or not to control the mux in the i2c functions
+#define USING_MUX true //Whether or not to control the mux in the i2c functions
 // Firmware images
 extern const uint8_t bhi360_firmware_image[]; 
 //const uint32_t bhi360_firmware_size = 130312; //The size of the firmware currently
@@ -70,7 +71,7 @@ static void quatToEuler(const float *q) {
 static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv) {
     if (info->sensor_id == BHI360_VIRTUAL_SENSOR_ID) { 
         int16_t *q_raw = (int16_t *)info->data_ptr;
-        float q[4] = {
+        /*float q[4] = {
             q_raw[3] / 16384.0f,  //w   // Scale factor from defs
             q_raw[0] / 16384.0f, //x
             q_raw[1] / 16384.0f, //y
@@ -79,7 +80,12 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
         quat[0] = q[0];
         quat[1] = q[1];
         quat[2] = q[2];
-        quat[3] = q[3];
+        quat[3] = q[3]; */
+
+        quat[0] = q_raw[3] / QUAT_SCALING_FACTOR;
+        quat[1] = q_raw[0] / QUAT_SCALING_FACTOR;
+        quat[2] = q_raw[1] / QUAT_SCALING_FACTOR;
+        quat[3] = q_raw[2] / QUAT_SCALING_FACTOR;
 
     }
 }
@@ -156,6 +162,9 @@ void app_main(void) {
 
     //debug
     ESP_LOGI(TAG, "3. Testing I2C...");
+    vTaskDelay(pdMS_TO_TICKS(200));
+    ESP_LOGI(TAG, "NOW");
+    vTaskDelay(pdMS_TO_TICKS(200));
     uint8_t chip_id[1];
     if (bhi360_i2c_read(0x01, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
         ESP_LOGI(TAG, "I2C OK! CHIP_ID=0x%02x (expect 0xC8)", chip_id[0]);
