@@ -8,6 +8,7 @@
 #include "bhi360_i2c.h"
 #include "stdint.h"
 #include "math.h"
+#include "driver/gpio.h"
 
 //These are the virtual sensor settings: (Page 103-104 of datasheet)
 //Rotation vector REQUIRES magnetometer BMM150/350, but has accuracy field
@@ -18,12 +19,13 @@
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
 #define QUAT_SCALING_FACTOR 16384.0f
 //Pin numbers
-#define SDA_0 8 //same as mosi with my wiring
-#define SCL_0 7 //same as sck with my wiring
+#define SDA_PIN 7 //same as mosi with my wiring
+#define SCL_PIN 8 //same as sck with my wiring
+#define RESET_PIN 6
 //I2C stuff
 #define I2C_RATE_HZ 400000 //The clock frequency for i2c
 #define I2C_TIMEOUT_US 2000 //timeout for clock stretching (if the device needs a bit longer it stretches the clock somehow)
-#define CHANNEL 0 //testing I2C Mux channel number will add into context
+#define CHANNEL 6 //testing I2C Mux channel number will add into context
 #define USING_MUX true //Whether or not to control the mux in the i2c functions
 // Firmware images
 extern const uint8_t bhi360_firmware_image[]; 
@@ -71,16 +73,6 @@ static void quatToEuler(const float *q) {
 static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv) {
     if (info->sensor_id == BHI360_VIRTUAL_SENSOR_ID) { 
         int16_t *q_raw = (int16_t *)info->data_ptr;
-        /*float q[4] = {
-            q_raw[3] / 16384.0f,  //w   // Scale factor from defs
-            q_raw[0] / 16384.0f, //x
-            q_raw[1] / 16384.0f, //y
-            q_raw[2] / 16384.0f //z
-        };
-        quat[0] = q[0];
-        quat[1] = q[1];
-        quat[2] = q[2];
-        quat[3] = q[3]; */
 
         quat[0] = q_raw[3] / QUAT_SCALING_FACTOR;
         quat[1] = q_raw[0] / QUAT_SCALING_FACTOR;
@@ -98,6 +90,17 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
 void app_main(void) {
     ESP_LOGI(TAG, "Start app_main, esplog ok");
     
+    ESP_LOGI(TAG, "Setting up reset pins (locking to high for now for testing)");
+    gpio_config_t reset_pin_gpio_config = { //Create the configuration for the reset we will use
+        .pin_bit_mask = (1ULL << RESET_PIN),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&reset_pin_gpio_config); //actually configure it
+    gpio_set_level(RESET_PIN, 1); //Set it at 1, then hold until we need to reset the bhi360s
+
     /**
      * Variables needed for function
      */
@@ -111,8 +114,8 @@ void app_main(void) {
     i2c_master_bus_config_t i2cBusConfig = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .i2c_port = I2C_NUM_0,
-        .scl_io_num = SCL_0,
-        .sda_io_num = SDA_0,
+        .scl_io_num = SCL_PIN,
+        .sda_io_num = SDA_PIN,
         .glitch_ignore_cnt = 7,
         .flags.enable_internal_pullup = false,
     };
@@ -186,10 +189,10 @@ void app_main(void) {
      * Load firmware and boot from RAM
      * */
 
-     #define NUM_RETRIES 5 //how many times we are willing to sit and wait for this to try to upload
+     #define NUM_RETRIES 3 //how many times we are willing to sit and wait for this to try to upload
 
-     ESP_LOGI(TAG, "Uploading Firmware");
-     ESP_LOGI(TAG, "Firmware size: %d bytes", sizeof(bhi360_firmware_image));
+    ESP_LOGI(TAG, "Uploading Firmware");
+    ESP_LOGI(TAG, "Firmware size: %d bytes", sizeof(bhi360_firmware_image));
     bool uploadOk = false;
     for( int attempt = 0; attempt < NUM_RETRIES && !uploadOk; attempt ++){
         ESP_LOGI(TAG, "Attempt %d", attempt);
@@ -217,17 +220,6 @@ void app_main(void) {
 
     ESP_LOGI(TAG, "WHOOO WE UPLOADED");
 
-     
-
-    /* Old version, no retries
-    ESP_LOGI(TAG, "Uploading firmware.."); //debug
-    ESP_LOGI(TAG, "Firmware size: %d bytes", sizeof(bhi360_firmware_image));
-    if (bhy2_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev) != BHY2_OK ||
-        bhy2_boot_from_ram(&dev) != BHY2_OK) { //if either upload or boot fails print error
-        ESP_LOGI(TAG, "Firmware load failed"); //debug
-        return;
-    }
-    ESP_LOGI(TAG, "Firmware Uploadqed!"); //debug */
     /**
      * Update virtual sensor list & 
      * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID

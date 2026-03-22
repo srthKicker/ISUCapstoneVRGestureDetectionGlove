@@ -44,7 +44,7 @@ int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_
 
 //Writes a specified number of bytes over i2c using the modern form
 //Stack version of this method, heap method is below
-/*int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
+int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
 {
     i2cContext_t * cntxt = (i2cContext_t *)intf_ptr;
     i2c_master_dev_handle_t devHandle = cntxt->devHandle;
@@ -66,9 +66,10 @@ int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_
         I2C_TIMEOUT_MS
     );
     return (ret == ESP_OK) ? 0 : -1;
-} */
+} 
 
-//Allocates on heap instead of on stack to try and fix it
+/*
+//Allocates on heap instead of on stack if you want
 int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void *intf_ptr)
 {
     i2cContext_t *cntxt = (i2cContext_t *)intf_ptr;
@@ -87,7 +88,7 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
 
     free(buf);
     return (ret == ESP_OK) ? 0 : -1;
-}
+}*/
 
 
 //Simple delay function to pass to the BHI360 drivers.
