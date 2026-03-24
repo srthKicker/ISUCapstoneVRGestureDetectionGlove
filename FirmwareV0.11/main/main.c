@@ -14,10 +14,13 @@
 //Rotation vector REQUIRES magnetometer BMM150/350, but has accuracy field
 //Game rotation vector does not have accuracy field (zeroed out but still sent) does not need magnetometer
 //Add one to each value to get "wakeup" version, higher latency, bad for our project.
-#define BHI360_VIRTUAL_SENSOR_ID 37 //Change to change virtual sensor value
+
 #define BHI360_SENSORID_RV 34 //Rotation vector setting 
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
 #define QUAT_SCALING_FACTOR 16384.0f
+
+#define BHI360_VIRTUAL_SENSOR_ID BHI360_SENSORID_GV //Change to change virtual sensor value
+
 #define NUMBER_OF_SENSORS 6 //this won't change lol, just removes magic numbers
 //Pin numbers
 #define SDA_PIN 7 //same as mosi with my wiring
