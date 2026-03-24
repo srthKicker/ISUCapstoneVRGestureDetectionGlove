@@ -27,7 +27,7 @@
 #define SCL_PIN 8 //same as sck with my wiring
 #define RESET_PIN 6
 //I2C stuff
-#define I2C_RATE_HZ 400000 //The clock frequency for i2c
+#define I2C_RATE_HZ 1000000 //The clock frequency for i2c
 #define I2C_TIMEOUT_US 2000 //timeout for clock stretching (if the device needs a bit longer it stretches the clock somehow)
 
 /*
@@ -40,7 +40,7 @@ Channel 4 is Pointer (left  hand)
 Channel 5 is Middle (left hand)
 Channel 6 is Ring (left hand)
 Channel 7 is Pointer (left hand)
-*/
+*/ // 1 3 4 5 6 7
 #define CHANNEL 6 //testing I2C Mux channel number will add into context
 #define WRIST_CHANNEL 1
 #define THUMB_CHANNEL 3
