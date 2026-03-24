@@ -197,11 +197,11 @@ static void setupI2CBus(){
     // Channel number: 1       3      4       5       6     7 
     for(int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++){
         //Set up config
-        bhi360_configs[sensorNum].dev_addr_length = I2C_ADDR_BIT_LEN_7;
+        bhi360_configs[sensorNum].dev_addr_length = I2C_ADDR_BIT_7;
+        bhi360_configs[sensorNum].device_address = SensorAddress;
         bhi360_configs[sensorNum].scl_speed_hz = I2C_RATE_HZ;
         bhi360_configs[sensorNum].scl_wait_us = I2C_TIMEOUT_US;
         bhi360_configs[sensorNum].flags.disable_ack_check = 0;
-
         //Add sensor to bus
         ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &bhi360_configs[sensorNum], &bhi360_handles[sensorNum]));
 
@@ -279,11 +279,10 @@ static void setupAll(){
 
 static void pollSensors(){
     for(int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++){
-        int8_t err = bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf[sensorNum]), &bhi360_devs[sensorNum]);//read from sensor
+        int8_t err = bhy2_get_and_process_fifo(fifo_buf[sensorNum], sizeof(fifo_buf[sensorNum]), &bhi360_devs[sensorNum]);//read from sensor
         if(err != BHY2_OK){
             ESP_LOGE("I2C Error", "FIFO err: %d", err);
         }
-        quatToEuler(quat);
     }
 }
 
@@ -292,6 +291,10 @@ void app_main(void) {
 
     while(1){
         pollSensors();
+        for(int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++){
+            ESP_LOGI("Euler", "sensor %d", sensorNum);
+            quatToEuler(quat[sensorNum]);
+        }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
