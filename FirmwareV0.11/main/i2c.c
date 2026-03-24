@@ -9,7 +9,7 @@
 #define CHANNEL 0 //testing I2C Mux channel number will add into context
 
 // Writes the channel select byte to the PCA9548A
-// PCA9548A takes a single byte: bit 0-7 = channel enable (we only set one at a time)
+// PCA9548A takes a single byte: bit 0-7 to enable one of the channels (8 choose 1 encoding, only allow 0-7)
 esp_err_t selectMuxChannel(i2cContext_t *cntxt)
 {
     uint8_t channel_byte = (1 << cntxt->muxChannel); // e.g. channel 2 → 00000100
@@ -24,7 +24,7 @@ int8_t bhi360_i2c_read(uint8_t regAddr, uint8_t *data, uint32_t len, void *intf_
     i2cContext_t * cntxt = (i2cContext_t *)intf_ptr;
 
     //Select the i2c mux channel we are using
-    if(cntxt->usingMUX) selectMuxChannel(cntxt);
+    selectMuxChannel(cntxt);
 
     i2c_master_dev_handle_t devHandle = cntxt->devHandle;
     // First write the register we wanna read from
@@ -50,7 +50,7 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
     i2c_master_dev_handle_t devHandle = cntxt->devHandle;
 
     //Select the i2c mux channel we are using
-    if(cntxt->usingMUX) selectMuxChannel(cntxt);
+    selectMuxChannel(cntxt);
     
 
     // Build a buffer: [regAddr][data...]
@@ -76,7 +76,7 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
     i2c_master_dev_handle_t devHandle = cntxt->devHandle;
 
     //Select the i2c mux channel we are using
-    if(cntxt->usingMUX) selectMuxChannel(cntxt);
+    selectMuxChannel(cntxt);
 
     uint8_t *buf = malloc(len + 1);
     if (!buf) return -1;
@@ -95,4 +95,5 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
 void bhi360_delay_us(uint32_t period, void *intf_ptr){
     ets_delay_us(period);
 }
+
 

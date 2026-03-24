@@ -18,6 +18,7 @@
 #define BHI360_SENSORID_RV 34 //Rotation vector setting 
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
 #define QUAT_SCALING_FACTOR 16384.0f
+#define NUMBER_OF_SENSORS 6 //this won't change lol, just removes magic numbers
 //Pin numbers
 #define SDA_PIN 7 //same as mosi with my wiring
 #define SCL_PIN 8 //same as sck with my wiring
@@ -25,25 +26,59 @@
 //I2C stuff
 #define I2C_RATE_HZ 400000 //The clock frequency for i2c
 #define I2C_TIMEOUT_US 2000 //timeout for clock stretching (if the device needs a bit longer it stretches the clock somehow)
+
+/*
+GUIDE TO CHANNELS ON PROTOTYPE
+Channel 0 is nothing
+Channel 1 is Wrist IMU
+Channel 2 is nothing
+Channel 3 is Thumb (left hand)
+Channel 4 is Pointer (left  hand)
+Channel 5 is Middle (left hand)
+Channel 6 is Ring (left hand)
+Channel 7 is Pointer (left hand)
+*/
 #define CHANNEL 6 //testing I2C Mux channel number will add into context
-#define USING_MUX true //Whether or not to control the mux in the i2c functions
+#define WRIST_CHANNEL 1
+#define THUMB_CHANNEL 3
+#define POINTER_CHANNEL 4
+#define MIDDLE_CHANNEL 5
+#define RING_CHANNEL 6
+#define PINKY_CHANNEL 7
+
 // Firmware images
 extern const uint8_t bhi360_firmware_image[]; 
 //const uint32_t bhi360_firmware_size = 130312; //The size of the firmware currently
 //debugging
 const char *TAG = "Testing";
-//extern const unsigned int bhi360_firmware_image_len = sizeof(bhi360_firmware_image); //Might not be needed?
+
 //Addresses and Registers
-const uint8_t SensorAddress = 0x28; //0x28 if sdo grounded for BHI360 or 0z29 if sdo set to 1.8v
+const uint8_t SensorAddress = 0x28; //0x28 if sdo grounded for BHI360 or 0x29 if sdo set to 1.8v
 const uint8_t MuxAddress = 0x70; // 0x70 is for MUX when all address pins are untouched
 const float SensorSampleRate = 100.0f; //sample rate in HZ I think
 const uint32_t SensorLatency = 0; //Something with buffering and stuff, ill explain later
+//Helps determine which channel goes to which sensor
+static const uint8_t MUX_CHANNEL_BY_SENSOR[NUMBER_OF_SENSORS] =
+    {WRIST_CHANNEL, THUMB_CHANNEL, POINTER_CHANNEL, MIDDLE_CHANNEL, RING_CHANNEL, PINKY_CHANNEL}; 
+const enum bhy2_intf intf = BHY2_I2C_INTERFACE;
 
-
-//Static variables
-static uint8_t fifo_buf[4096]; // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed
-static float quat[4];
-
+/*
+Static variables
+*/
+static gpio_config_t reset_pin_gpio_config; //Configured in setup
+//i2c bus configurations and handles
+static i2c_master_bus_config_t bus_config;
+static i2c_master_bus_handle_t bus_handle;
+//i2c device configurations and handles
+static i2c_device_config_t mux_config;
+static i2c_master_dev_handle_t mux_handle;
+//For the bhi360 statics, we will order it like this: Wrist, Thumb, Pointer, Middle, Ring, Pinky
+static i2c_device_config_t bhi360_configs[NUMBER_OF_SENSORS]; //Device configurations for each sensor
+static i2c_master_dev_handle_t bhi360_handles[NUMBER_OF_SENSORS];
+static i2cContext_t bhi360_contexts[NUMBER_OF_SENSORS]; //i2c context for each sensor
+static struct bhy2_dev bhi360_devs[NUMBER_OF_SENSORS]; //The actual API devices
+static uint8_t fifo_buf[NUMBER_OF_SENSORS][4096]; // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed
+static float quat[NUMBER_OF_SENSORS][4]; //Current quaternion we have read from the sensor
 
 //Debug function to visualize whats going on
 //I just found this logic, i dont know how it works but it seems to lol
@@ -71,180 +106,192 @@ static void quatToEuler(const float *q) {
 
 //Scales raw data to correct data amount.
 static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv) {
+    i2cContext_t * cntxt = (i2cContext_t *)priv;
+    //Ensure we are saving to the correct quaternion
+
+    uint8_t sensorNumber;
+    switch(cntxt->muxChannel){ //switch statement to determine which channel 
+            case WRIST_CHANNEL:
+                sensorNumber = 0;
+                break;
+            case THUMB_CHANNEL:
+                sensorNumber = 1;
+                break;
+            case POINTER_CHANNEL:
+                sensorNumber = 2;
+                break;
+            case MIDDLE_CHANNEL:
+                sensorNumber = 3;
+                break;
+            case RING_CHANNEL:
+                sensorNumber = 4;
+                break;
+            case PINKY_CHANNEL:
+                sensorNumber = 5;
+                break;
+            default:
+                return; //uhhh should never hit this spot
+            break;
+    }
+
     if (info->sensor_id == BHI360_VIRTUAL_SENSOR_ID) { 
         int16_t *q_raw = (int16_t *)info->data_ptr;
-
-        quat[0] = q_raw[3] / QUAT_SCALING_FACTOR;
-        quat[1] = q_raw[0] / QUAT_SCALING_FACTOR;
-        quat[2] = q_raw[1] / QUAT_SCALING_FACTOR;
-        quat[3] = q_raw[2] / QUAT_SCALING_FACTOR;
-
+        quat[sensorNumber][0] = q_raw[3] / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][1] = q_raw[0] / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][2] = q_raw[1] / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][3] = q_raw[2] / QUAT_SCALING_FACTOR;
     }
 }
 
+//Resets all bhi360s at once
+static void resetSensors(){
+    gpio_set_level(RESET_PIN, 0); //Turn sensors off (active low reset pin)
+    vTaskDelay(pdMS_TO_TICKS(100));
+    gpio_set_level(RESET_PIN, 1); //Turn sensors back on
+}
+/*
+SETUP FUNCTIONS
 
+Below is a set of functions used to initialize communication with the BHI360 sensors
+They are aimed to abstract as much as possible so that further development will not have to work with 
+the API or any GPIO nonsense
+*/
 
+//Sets up the predetermined pin to reset all six bhi360 sensors at once if needed, pulls high to avoid reset
+static void setupResetPin(){
 
+    ESP_LOGI(TAG, "Setting up reset pins");
+    //Configure reset pins
+    reset_pin_gpio_config.pin_bit_mask = (1ULL << RESET_PIN);
+    reset_pin_gpio_config.mode = GPIO_MODE_OUTPUT;
+    reset_pin_gpio_config.pull_up_en = GPIO_PULLUP_DISABLE;
+    reset_pin_gpio_config.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    reset_pin_gpio_config.intr_type = GPIO_INTR_DISABLE;
+    gpio_config(&reset_pin_gpio_config);
+    gpio_set_level(RESET_PIN, 1); //Pull reset high until we want to reset (active low = reset)
+}
 
-
-void app_main(void) {
-    ESP_LOGI(TAG, "Start app_main, esplog ok");
-    
-    ESP_LOGI(TAG, "Setting up reset pins (locking to high for now for testing)");
-    gpio_config_t reset_pin_gpio_config = { //Create the configuration for the reset we will use
-        .pin_bit_mask = (1ULL << RESET_PIN),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE
-    };
-    gpio_config(&reset_pin_gpio_config); //actually configure it
-    gpio_set_level(RESET_PIN, 1); //Set it at 1, then hold until we need to reset the bhi360s
-
-    /**
-     * Variables needed for function
-     */
-    //BHI360 driver variables
-    struct bhy2_dev dev; // Device structure
-    enum bhy2_intf intf = BHY2_I2C_INTERFACE; //Communication protocol
-    //Context for i2c functions, include port MCU will use and address of device. Eventually will change throughout usage
-    //to allow communicating with different i2c devices.
-
+//Misleading name, sets up the i2c bus as well as all devices on it to allow for communication
+static void setupI2CBus(){
     //Configure i2c for the bus
-    i2c_master_bus_config_t i2cBusConfig = {
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .i2c_port = I2C_NUM_0,
-        .scl_io_num = SCL_PIN,
-        .sda_io_num = SDA_PIN,
-        .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = false,
-    };
+    bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
+    bus_config.i2c_port = I2C_NUM_0;
+    bus_config.scl_io_num = SCL_PIN;
+    bus_config.sda_io_num = SDA_PIN;
+    bus_config.glitch_ignore_cnt = 7; //Just set it to typical value which is 7
+    bus_config.flags.enable_internal_pullup = false; //we have stronger ones on the bus
 
-    //Configure the sensor
-    i2c_device_config_t i2cSensorDeviceConfig = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7, //bhi360 uses 7 bit addresses
-        
-        .device_address = SensorAddress, 
-        .scl_speed_hz = I2C_RATE_HZ, 
-        .scl_wait_us = I2C_TIMEOUT_US,
-        .flags.disable_ack_check = 0, //Enable NACK error detection.
-    };
+    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_config, &bus_handle));//Link the bus config to the handle we've made
 
-    //Configure the mux device
-    i2c_device_config_t i2cMuxDeviceConfig = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7, //bhi360 uses 7 bit addresses
-        
-        .device_address = MuxAddress, 
-        .scl_speed_hz = I2C_RATE_HZ, 
-        .scl_wait_us = I2C_TIMEOUT_US,
-        .flags.disable_ack_check = 0, //Enable NACK error detection.
-    };
-    i2c_master_bus_handle_t i2cBusHandle;
-    i2c_master_dev_handle_t i2cSensorDevHandle; //To talk to the sensor
-    i2c_master_dev_handle_t i2cMuxDevHandle; //To talk to the mux
+    //Configure i2c for the multiplexer
+    mux_config.dev_addr_length = I2C_ADDR_BIT_7;
+    mux_config.device_address = MuxAddress;
+    mux_config.scl_speed_hz = I2C_RATE_HZ;
+    mux_config.scl_wait_us = I2C_TIMEOUT_US;
+    mux_config.flags.disable_ack_check = 0; //Enable NACK error detection
+
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle,&mux_config,&mux_handle)); //Add the mulitplexer to the bus
+
+    //Configure i2c for the sensors (configs and contexts)
+    // Ordered       Wrist, Thumb, Pointer, Middle, Ring, Pinky (0-5)
+    // Channel number: 1       3      4       5       6     7 
+    for(int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++){
+        //Set up config
+        bhi360_configs[sensorNum].dev_addr_length = I2C_ADDR_BIT_LEN_7;
+        bhi360_configs[sensorNum].scl_speed_hz = I2C_RATE_HZ;
+        bhi360_configs[sensorNum].scl_wait_us = I2C_TIMEOUT_US;
+        bhi360_configs[sensorNum].flags.disable_ack_check = 0;
+
+        //Add sensor to bus
+        ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &bhi360_configs[sensorNum], &bhi360_handles[sensorNum]));
+
+        //Set up context
+        bhi360_contexts[sensorNum].devHandle = bhi360_handles[sensorNum];
+        bhi360_contexts[sensorNum].muxDevHandle = mux_handle;
+        bhi360_contexts[sensorNum].muxChannel = MUX_CHANNEL_BY_SENSOR[sensorNum]; //set the Mux channel number
+    }
 
     ESP_LOGI(TAG, "Declared structs!"); //debug
-    //Link the bus config to the handle we've made
-    ESP_ERROR_CHECK(i2c_new_master_bus(&i2cBusConfig, &i2cBusHandle));
-    //Add the devices we've made here
-    i2c_master_bus_add_device(i2cBusHandle,&i2cSensorDeviceConfig,&i2cSensorDevHandle);
-    i2c_master_bus_add_device(i2cBusHandle,&i2cMuxDeviceConfig,&i2cMuxDevHandle);
-    ESP_LOGI(TAG, "Added i2c device"); //debug
-    //We pass this context to every i2c function through intf_ptr (pass by reference)
-    i2cContext_t cntxt = {
-        .busConfig = i2cBusConfig,
-        .busHandle = i2cBusHandle,
-        .devHandle = i2cSensorDevHandle,
-        .devConfig = i2cSensorDeviceConfig,
-        .muxDeviceConfig = i2cMuxDeviceConfig,
-        .muxDevHandle = i2cMuxDevHandle,
-        .muxChannel = CHANNEL, //This will change for each device we put in, for testing itll just be one
-        .usingMUX = USING_MUX, //Optional for final product, will use mux if using i2c
-    };
-    //struct bhy2_virt_sensor_conf virtualSensorConf;
+    
+}
 
-    //debug
-    ESP_LOGI(TAG, "3. Testing I2C...");
-    vTaskDelay(pdMS_TO_TICKS(200));
-    ESP_LOGI(TAG, "NOW");
-    vTaskDelay(pdMS_TO_TICKS(200));
-    uint8_t chip_id[1];
-    if (bhi360_i2c_read(0x01, chip_id, 1, &cntxt) == 0) {  // Read CHIP_ID reg
-        ESP_LOGI(TAG, "I2C OK! CHIP_ID=0x%02x (expect 0xC8)", chip_id[0]);
-    } else {
-        ESP_LOGE(TAG, "I2C FAIL - No device @0x%02x", SensorAddress);
-        while(1) vTaskDelay(pdMS_TO_TICKS(1000));  // Hang safe
-    } 
-    /**
-     * Initialize BHI360 interface
-     * We pass the configuration struct to this as intf_ptr to give us context for everything
-     * */
-    if (bhy2_init(intf, bhi360_i2c_read, bhi360_i2c_write,  
-                    bhi360_delay_us, 256, &cntxt, &dev) != BHY2_OK) {
-        printf("BHI360 init failed\n");
-        return;
-    }
-    ESP_LOGI(TAG, "Initialized bhy2_init i guess"); //debug
-    /**
-     * Load firmware and boot from RAM
-     * */
-
-     #define NUM_RETRIES 3 //how many times we are willing to sit and wait for this to try to upload
-
-    ESP_LOGI(TAG, "Uploading Firmware");
-    ESP_LOGI(TAG, "Firmware size: %d bytes", sizeof(bhi360_firmware_image));
-    bool uploadOk = false;
-    for( int attempt = 0; attempt < NUM_RETRIES && !uploadOk; attempt ++){
+//Initializes all BHI360 sensors to allow the API to communicate with them
+static void setupBHI360Devices(){
+    //We have to initialize each sensor so lets do this 6 times
+    //It will take a while to upload one at a time
+    for(int sensorNumber = 0; sensorNumber < NUMBER_OF_SENSORS; sensorNumber++){
+        //Initialize BHI360 interface
+        if(bhy2_init(intf, bhi360_i2c_read, bhi360_i2c_write, bhi360_delay_us, 256, &bhi360_contexts[sensorNumber], &bhi360_devs[sensorNumber]) != BHY2_OK) {
+            ESP_LOGE(TAG, "Failed to initialize BHI360 #%d", sensorNumber);
+        }
+        //Upload firmware and boot from RAM
+        #define NUM_RETRIES 3 //If it fails 3 times, we just give up and quit
+        bool uploadOk = false; 
+        for( int attempt = 0; attempt < NUM_RETRIES && !uploadOk; attempt ++){ //retry until 
         ESP_LOGI(TAG, "Attempt %d", attempt);
-        int8_t uploadResult = bhy2_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &dev);
+        int8_t uploadResult = bhy2_upload_firmware_to_ram(bhi360_firmware_image, sizeof(bhi360_firmware_image), &bhi360_devs[sensorNumber]);
         
         if(uploadResult != BHY2_OK){ //if it fails
             ESP_LOGE("OOPS", "Try %d failed with uploadResult %d", attempt, uploadResult);
             vTaskDelay(pdMS_TO_TICKS(200)); //wait a minute before retrying
-        } else{
-                int8_t bootResult = bhy2_boot_from_ram(&dev);
-                if(bootResult != BHY2_OK){ //on boot failure
-                    ESP_LOGE("OOPS", "Try %d failed with bootResult %d", attempt, bootResult);
-                    vTaskDelay(pdMS_TO_TICKS(200));
+        } else{ //if upload succeeds
+                if(bhy2_boot_from_ram(&bhi360_devs[sensorNumber]) != BHY2_OK){ //on boot failure
+                    ESP_LOGE("OOPS", "Try %d failed", attempt);
+                    vTaskDelay(pdMS_TO_TICKS(200)); //wait a second to see if that helps
                 } else{
                     uploadOk = true;
                 }
             
         }
-    }
-    
-    if(!uploadOk) {
-        ESP_LOGE("OOPS", "scratch everything upload/boot failed after retries");
-        return; //exit main
-    }
-
-    ESP_LOGI(TAG, "WHOOO WE UPLOADED");
-
-    /**
-     * Update virtual sensor list & 
-     * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
-     * */
-    bhy2_update_virtual_sensor_list(&dev);
-    bhy2_register_fifo_parse_callback(BHI360_VIRTUAL_SENSOR_ID, rot_vec_cb, NULL, &dev);
-    ESP_LOGI(TAG, "Updated virtual sensor and fifo parse callback"); //debug
-    
-    
-    /**
-     * Update virtual sensor list & 
-     * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
-     * */
-    bhy2_set_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, SensorSampleRate, SensorLatency, &dev);
-    ESP_LOGI(TAG, "BHi360 ready, polling for rotation vecotr"); //debug
-    //int count = 0;
-    while (1) {
-        int8_t err = bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf), &dev);//read from sensor
-        if(err != BHY2_OK){
-            ESP_LOGW("I2C Error", "FIFO err: %d", err);
+        } //end upload attempt loop
+        if(!uploadOk) {
+            ESP_LOGE("OOPS", "scratch everything upload/boot failed after retries");
+            return; //exit main
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
-        //ESP_LOGI("Quaternion", "w=%.3f i=%.3f j=%.3f k=%.3f", quat[0], quat[1], quat[2], quat[3]);
-        quatToEuler(quat);
-        //count++;
+        ESP_LOGI(TAG, "WHOOO WE UPLOADED");
+        
+        /**
+         * Update virtual sensor list & 
+         * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
+         * */
+        bhy2_update_virtual_sensor_list(&bhi360_devs[sensorNumber]);
+        bhy2_register_fifo_parse_callback(BHI360_VIRTUAL_SENSOR_ID, rot_vec_cb, &bhi360_contexts[sensorNumber], &bhi360_devs[sensorNumber]);
+        ESP_LOGI(TAG, "Updated virtual sensor and fifo parse callback"); //debug
+        
+        
+        /**
+         * Update virtual sensor list & 
+         * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
+         * */
+        bhy2_set_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, SensorSampleRate, SensorLatency, &bhi360_devs[sensorNumber]);
+        ESP_LOGI(TAG, "BHi360 #%d ready, polling for rotation vecotr", sensorNumber); //debug
+        
+    } //end sensor init loop
+    ESP_LOGI(TAG, "All six sensors ready!");
+}
 
+//Called to initialize i2c, reset, multiplexer, and sensors
+static void setupAll(){
+    setupResetPin();
+    setupI2CBus();
+    setupBHI360Devices();
+}
+
+static void pollSensors(){
+    for(int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++){
+        int8_t err = bhy2_get_and_process_fifo(fifo_buf, sizeof(fifo_buf[sensorNum]), &bhi360_devs[sensorNum]);//read from sensor
+        if(err != BHY2_OK){
+            ESP_LOGE("I2C Error", "FIFO err: %d", err);
+        }
+        quatToEuler(quat);
+    }
+}
+
+void app_main(void) {
+    setupAll();
+
+    while(1){
+        pollSensors();
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
