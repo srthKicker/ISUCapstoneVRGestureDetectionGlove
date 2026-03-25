@@ -27,7 +27,7 @@
 #define SCL_PIN 8 //same as sck with my wiring
 #define RESET_PIN 6
 //I2C stuff
-#define I2C_RATE_HZ 1000000 //The clock frequency for i2c
+#define I2C_RATE_HZ 400000 //The clock frequency for i2c
 #define I2C_TIMEOUT_US 2000 //timeout for clock stretching (if the device needs a bit longer it stretches the clock somehow)
 
 /*
@@ -40,7 +40,7 @@ Channel 4 is Pointer (left  hand)
 Channel 5 is Middle (left hand)
 Channel 6 is Ring (left hand)
 Channel 7 is Pointer (left hand)
-*/ // 1 3 4 5 6 7
+*/
 #define CHANNEL 6 //testing I2C Mux channel number will add into context
 #define WRIST_CHANNEL 1
 #define THUMB_CHANNEL 3
@@ -280,6 +280,10 @@ static void setupAll(){
     setupBHI360Devices();
 }
 
+static void quaternionMultiplication(){
+    
+}
+
 static void pollSensors(){
     for(int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++){
         int8_t err = bhy2_get_and_process_fifo(fifo_buf[sensorNum], sizeof(fifo_buf[sensorNum]), &bhi360_devs[sensorNum]);//read from sensor
@@ -288,8 +292,13 @@ static void pollSensors(){
         }
     }
 }
-
-void app_main(void) {
+/********************************************************
+ * This is Seth's code that polls the IMUs
+ * to print their output as Euler vectors
+ * converted to a FreeRTOS task function.
+ * (Originally app_main)
+ ********************************************************/
+void pollSensors_Task(void *pvParameters) {
     setupAll();
 
     while(1){
@@ -300,4 +309,18 @@ void app_main(void) {
         }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
+}
+/****************************************************
+ * Basic Task structure without Core pinning.
+ * Testing for Familiarity.
+ ****************************************************/
+void app_main(void) {
+    xTaskCreate(
+        pollSensors_Task,           //Task Function
+        "Sensor Data Collection",   //Debugging Task Name
+        4096,                       //Stack Size in Bytes
+        NULL,                       //Task Parameters
+        1,                          //Task Priority
+        NULL                        //Task Handle (Optional)
+    );
 }
