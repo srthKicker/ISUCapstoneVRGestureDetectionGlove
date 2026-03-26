@@ -82,8 +82,8 @@ static i2c_master_dev_handle_t bhi360_handles[NUMBER_OF_SENSORS];
 static i2cContext_t bhi360_contexts[NUMBER_OF_SENSORS]; //i2c context for each sensor
 static struct bhy2_dev bhi360_devs[NUMBER_OF_SENSORS]; //The actual API devices
 static uint8_t fifo_buf[NUMBER_OF_SENSORS][4096]; // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed
-//static float quat[NUMBER_OF_SENSORS][4]; //Current quaternion we have read from the sensor
-static Quat quats[NUMBER_OF_SENSORS];
+static float quat[NUMBER_OF_SENSORS][4]; //Current quaternion we have read from the sensor
+//static Quat quats[NUMBER_OF_SENSORS]; //Working on changing to quaternion datatype
 
 //Debug function to visualize whats going on
 //I just found this logic, i dont know how it works but it seems to lol
