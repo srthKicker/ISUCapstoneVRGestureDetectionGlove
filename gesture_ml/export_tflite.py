@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 import numpy as np
-from dataloader import load_dataset
+from dataLoader import load_dataset
 
 MODEL_PATH = "gesture_model.h5"
 OUTPUT_TFLITE = "gesture_model_int8.tflite"
