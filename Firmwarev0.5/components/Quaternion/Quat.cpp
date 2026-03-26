@@ -45,3 +45,8 @@ void Quat::qAdd(const Quat& deltaQuaternion) {
     y = y + deltaQuaternion.y;
     z = z + deltaQuaternion.z;
 }
+
+void orientQuaternion(const Quat & wristQuaternion, const Quat & fingerQuaternion) {
+
+    
+}
