@@ -1,4 +1,5 @@
 #include "Quat.h"
+#include "math.h"
 
 //Ensures the quaternion's magnitude is 1.
 void Quat::normalize() {

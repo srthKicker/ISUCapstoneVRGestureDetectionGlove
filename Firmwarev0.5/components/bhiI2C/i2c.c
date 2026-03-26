@@ -3,7 +3,8 @@
 #include "driver/i2c_types.h" //more modern i2c stuff to change over to
 #include "bhi360_i2c.h" //Header file we are defining
 #include <rom/ets_sys.h> //For delay function
-#include "bhi3.h" //For constants that the sensor might send over.
+#include <string.h> // For memcpy
+//#include "bhi3.h" //For constants that the sensor might send over.
 
 #define I2C_TIMEOUT_MS 5000 // 1 second timeout, can change
 #define CHANNEL 0 //testing I2C Mux channel number will add into context

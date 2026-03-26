@@ -1,6 +1,6 @@
 #ifndef BHI360_I2C_H
 #define BHI360_I2C_H
-#include "bhi3.h"  // For function pointer types
+//#include "bhi3.h"  // For function pointer types
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/i2c_master.h" //Modern i2c functions to change over to
