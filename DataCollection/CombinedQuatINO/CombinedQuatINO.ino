@@ -24,35 +24,20 @@ Madgwick madgwick6500[5];
 
 Quaternion q9250;
 Quaternion q6500[5];
-Quaternion q6500_fused;
 
-Quaternion quatNormalize(Quaternion q) {
-  float norm = sqrt(q.w*q.w + q.x*q.x + q.y*q.y + q.z*q.z);
-  if (norm == 0) return {1, 0, 0, 0};
-  return {
-    q.w / norm,
-    q.x / norm,
-    q.y / norm,
-    q.z / norm
-  };
+// Conjugate of a unit quaternion = its inverse
+Quaternion quatInverse(Quaternion q) {
+  return {q.w, -q.x, -q.y, -q.z};
 }
 
-Quaternion averageQuaternions(Quaternion *q, int count) {
-  Quaternion avg = {0, 0, 0, 0};
-
-  for (int i = 0; i < count; i++) {
-    avg.w += q[i].w;
-    avg.x += q[i].x;
-    avg.y += q[i].y;
-    avg.z += q[i].z;
-  }
-
-  avg.w /= count;
-  avg.x /= count;
-  avg.y /= count;
-  avg.z /= count;
-
-  return quatNormalize(avg);
+// Hamilton product: a * b
+Quaternion quatMultiply(Quaternion a, Quaternion b) {
+  return {
+    a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z,
+    a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y,
+    a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x,
+    a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w
+  };
 }
 
 
@@ -103,7 +88,7 @@ void printQuat(const Quaternion& quat) {
 
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(500000);
   delay(200);
 //Check MPU Connections:
   if(!MPU9250.init()){
@@ -208,6 +193,13 @@ void setup() {
   MPU6500_5.enableAccDLPF(true);
   MPU6500_5.setAccDLPF(MPU6500_DLPF_6);
 
+  // Initialize Madgwick filters with sample rate
+  // Sample rate = 1000 / (1 + divider) = 1000 / 6 ≈ 166 Hz
+  madgwick9250.begin(166);
+  for (int i = 0; i < 5; i++) {
+    madgwick6500[i].begin(166);
+  }
+
   delay(200);
 }
 
@@ -257,58 +249,41 @@ void loop() {
   madgwick6500[4].updateIMU(gyr_5.x, gyr_5.y, gyr_5.z, gValue_5.x, gValue_5.y, gValue_5.z);
 
 
+  // Get wrist quaternion (global frame)
   q9250 = {
     madgwick9250.q0Getter(),
     madgwick9250.q1Getter(),
     madgwick9250.q2Getter(),
     madgwick9250.q3Getter()
   };
-  for (int i=0; i<5; i++){
-  q6500[i] = {madgwick6500[i].q0Getter(), madgwick6500[i].q1Getter(), madgwick6500[i].q2Getter(),madgwick6500[i].q3Getter()}; 
+
+  // Get finger quaternions (global frame)
+  for (int i = 0; i < 5; i++) {
+    q6500[i] = {
+      madgwick6500[i].q0Getter(),
+      madgwick6500[i].q1Getter(),
+      madgwick6500[i].q2Getter(),
+      madgwick6500[i].q3Getter()
+    };
   }
 
-  Quaternion allQuats[6] = {q9250, q6500[0], q6500[1], q6500[2], q6500[3], q6500[4]};
-  q6500_fused = averageQuaternions(allQuats, 6);
+  // Compute wrist-relative finger quaternions:
+  // q_relative = inverse(q_wrist) * q_finger
+  // This removes wrist rotation so each finger is independent of the wrist.
+  Quaternion q_wrist_inv = quatInverse(q9250);
+  Quaternion q_rel[5];
+  for (int i = 0; i < 5; i++) {
+    q_rel[i] = quatMultiply(q_wrist_inv, q6500[i]);
+  }
 
-/*
-static uint32_t last = 0;
-if (millis() - last > 1000) {
-  last = millis();
-
-  uint32_t timestamp = millis();
-
-  // Print timestamp first
-  Serial.print(timestamp);
+  // Send: wrist (global), then 5 fingers (wrist-relative)
+  printQuat(q9250);
   Serial.print(",");
-  // Print all 6 quaternions
-  for (int i = 0; i < 6; i++) {
-  printQuat(allQuats[i]); 
-  Serial.print(","); 
+  for (int i = 0; i < 5; i++) {
+    printQuat(q_rel[i]);
+    if (i < 4) Serial.print(",");
   }
-
-  Serial.println(); // End line
-}
-*/
-  // Print all 6 quaternions
-  for (int i = 0; i < 6; i++) {
-  printQuat(allQuats[i]); 
-  Serial.print(","); 
-  }
-
-  Serial.println(); // End line
-
-/*
-
-  static uint32_t last = 0;
-  if (millis() - last > 1000) { 
-    last = millis();
-    for (int i = 0; i < 6; i++) {
-    Serial.printf("Quaternion %d: \r", i);
-    printQuat(allQuats[i]);
-    Serial.printf("\n");
-    }
-  }
-*/
+  Serial.println();
   delay(10); 
 
 }
