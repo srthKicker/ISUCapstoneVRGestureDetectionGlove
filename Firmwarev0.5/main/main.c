@@ -82,8 +82,8 @@ static i2c_master_dev_handle_t bhi360_handles[NUMBER_OF_SENSORS];
 static i2cContext_t bhi360_contexts[NUMBER_OF_SENSORS]; //i2c context for each sensor
 static struct bhy2_dev bhi360_devs[NUMBER_OF_SENSORS]; //The actual API devices
 static uint8_t fifo_buf[NUMBER_OF_SENSORS][4096]; // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed
-//static float quat[NUMBER_OF_SENSORS][4]; //Current quaternion we have read from the sensor
-static Quat quats[NUMBER_OF_SENSORS];
+static float quat[NUMBER_OF_SENSORS][4]; //Current quaternion we have read from the sensor
+//static Quat quats[NUMBER_OF_SENSORS]; //Working on changing to quaternion datatype
 
 //Debug function to visualize whats going on
 //I just found this logic, i dont know how it works but it seems to lol
@@ -283,19 +283,45 @@ static void setupAll(){
 }
 
 /*
-Inverses the *temporary* quaternion passed
+Normalizes the *temporary* quaternion passed
 Do not put in the hand data into this
 This will have to be a 
 */
-static void inverseQuaternion(float * tempWQ){
-
+void normalizeQuat(float * q) {
+    float mag = sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
+    q[0] = q[0]/mag;
+    q[1] = q[1]/mag;
+    q[2] = q[2]/mag;
+    q[3] = q[3]/mag;
 }
 /*
 First is wrist quat, second is quaternion to be a finger
-Do NOT pass a float that is not a quaternion
+Do NOT pass a float array that is not a quaternion
+Uses logic FingerOriented = Inverse(WristQuaternion) * FingerQuaternion
+Thus it orients the quaternion to the wrist by dewinding the
 */
-static void orientFinger(float * wQ, float * fQ){
+static void orientFinger(float *wQ, float *fQ) {
+    normalizeQuat(wQ);
+    normalizeQuat(fQ);
 
+    float inv[4]; //inverse wrist quaternion
+    inv[0] =  wQ[0];
+    inv[1] = -wQ[1];
+    inv[2] = -wQ[2];
+    inv[3] = -wQ[3];
+
+    // q_local = inv(wrist) * finger_world
+    // result stored back into fQ
+    float r[4]; //have to have a temp array
+    r[0] = inv[0]*fQ[0] - inv[1]*fQ[1] - inv[2]*fQ[2] - inv[3]*fQ[3];
+    r[1] = inv[0]*fQ[1] + inv[1]*fQ[0] + inv[2]*fQ[3] - inv[3]*fQ[2];
+    r[2] = inv[0]*fQ[2] - inv[1]*fQ[3] + inv[2]*fQ[0] + inv[3]*fQ[1];
+    r[3] = inv[0]*fQ[3] + inv[1]*fQ[2] - inv[2]*fQ[1] + inv[3]*fQ[0];
+
+    fQ[0] = r[0];
+    fQ[1] = r[1];
+    fQ[2] = r[2];
+    fQ[3] = r[3];
 }
 
 static void pollSensors(){
