@@ -1,4 +1,4 @@
-#include "Quat.h"
+/*#include "Quat.h"
 #include "math.h"
 
 //Ensures the quaternion's magnitude is 1.
@@ -20,15 +20,15 @@ void Quat::qMultiply(const Quat& dQ) {
     w = newW;
     x = newX;
     y = newY;
-    z = newZ; //trust me bro its gotta be this way
+    z = newZ; //trust me bro its gotta be this way */
     /*
     As an explaination, multiplying 2 quaternions applies rotations in order
     Think of quaternions as rotations.
     So, q1 * q2 rotates from origin by q1, then rotates from that point by q2.
     Not commutative!
     */
-}
-
+//}
+/*
 //Scales the quat by a scalar
 void Quat::qScale(const float scaleFactor) {
     w = scaleFactor * w;
@@ -50,3 +50,4 @@ void orientQuaternion(const Quat & wristQuaternion, const Quat & fingerQuaternio
 
     
 }
+*/

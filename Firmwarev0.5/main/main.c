@@ -324,6 +324,7 @@ static void orientFinger(float *wQ, float *fQ) {
     fQ[3] = r[3];
 }
 
+//Polls each of the six imus and stores data in the quat vector via the callback
 static void pollSensors(){
     for(int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++){
         int8_t err = bhy2_get_and_process_fifo(fifo_buf[sensorNum], sizeof(fifo_buf[sensorNum]), &bhi360_devs[sensorNum]);//read from sensor
@@ -331,6 +332,21 @@ static void pollSensors(){
             ESP_LOGE("I2C Error", "FIFO err: %d", err);
         }
     }
+}
+
+//Jonas Code to print quaternions in CSV format for the web UI and data collection
+static void print_quats_csv(void)
+{
+    for (int sensor = 0; sensor < NUMBER_OF_SENSORS; sensor++) {
+        for (int component = 0; component < 4; component++) {
+            if (sensor == NUMBER_OF_SENSORS - 1 && component == 3) {
+                printf("%.6f", (double)quat[sensor][component]);
+            } else {
+                printf("%.6f,", (double)quat[sensor][component]);
+            }
+        }
+    }
+    printf("\n");
 }
 /********************************************************
  * This is Seth's code that polls the IMUs
@@ -354,20 +370,7 @@ void pollSensors_Task(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
-//Jonas Code to print quaternions in CSV format for the web UI and data collection
-static void print_quats_csv(void)
-{
-    for (int sensor = 0; sensor < NUMBER_OF_SENSORS; sensor++) {
-        for (int component = 0; component < 4; component++) {
-            if (sensor == NUMBER_OF_SENSORS - 1 && component == 3) {
-                printf("%.6f", (double)quat[sensor][component]);
-            } else {
-                printf("%.6f,", (double)quat[sensor][component]);
-            }
-        }
-    }
-    printf("\n");
-}
+
 /****************************************************
  * Basic Task structure without Core pinning.
  * Testing for Familiarity.

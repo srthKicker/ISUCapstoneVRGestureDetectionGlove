@@ -1,6 +1,6 @@
 
 //A quaternion stores 4 ints (wxyz) and allows user to normalize and multiply
-class Quat { 
+/*class Quat { 
     public:
         float w;
         float x;
@@ -21,4 +21,4 @@ class Quat {
         void qScale(const float scaleFactor); 
         //Adds 2 quaternions
         void qAdd(const Quat& deltaQuaternion);
-};
+};*/
