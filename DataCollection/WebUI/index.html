@@ -368,7 +368,7 @@
         // Shared open logic used by both connect paths
         async function openPort(serialPort) {
             try {
-                await serialPort.open({ baudRate: 115200 });
+                await serialPort.open({ baudRate: 500000 });
                 isConnected = true;
                 updateConnectionStatus(true);
                 await refreshPorts(); // update dropdown with newly granted port
@@ -402,7 +402,7 @@
             isSessionActive      = true;
             currentGestureIndex  = 0;
             currentRecordingId   = 0;
-            gestureSequence      = generateGestureSequence(10);
+            gestureSequence      = generateGestureSequence(20);
             sessionRows          = [];
             document.getElementById('startBtn').disabled  = true;
             document.getElementById('stopBtn').disabled   = false;
