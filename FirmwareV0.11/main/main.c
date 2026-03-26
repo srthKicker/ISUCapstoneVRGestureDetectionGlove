@@ -27,7 +27,7 @@
 #define SCL_PIN 8 //same as sck with my wiring
 #define RESET_PIN 6
 //I2C stuff
-#define I2C_RATE_HZ 400000 //The clock frequency for i2c
+#define I2C_RATE_HZ 1000000 //The clock frequency for i2c
 #define I2C_TIMEOUT_US 2000 //timeout for clock stretching (if the device needs a bit longer it stretches the clock somehow)
 
 /*
@@ -280,8 +280,20 @@ static void setupAll(){
     setupBHI360Devices();
 }
 
-static void quaternionMultiplication(){
-    
+/*
+Inverses the *temporary* quaternion passed
+Do not put in the hand data into this
+This will have to be a 
+*/
+static void inverseQuaternion(float * tempWQ){
+
+}
+/*
+First is wrist quat, second is quaternion to be a finger
+Do NOT pass a float that is not a quaternion
+*/
+static void orientFinger(float * wQ, float * fQ){
+
 }
 
 static void pollSensors(){
