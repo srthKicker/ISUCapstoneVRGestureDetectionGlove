@@ -312,17 +312,35 @@ static void pollSensors(){
  * converted to a FreeRTOS task function.
  * (Originally app_main)
  ********************************************************/
+
 void pollSensors_Task(void *pvParameters) {
     setupAll();
 
     while(1){
         pollSensors();
+        /*
         for(int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++){
             ESP_LOGI("Euler", "sensor %d", sensorNum);
             quatToEuler(quat[sensorNum]);
         }
+            */ // Didn't want to accidentally break it so my code is below that should replace this 
+        print_quats_csv(); //Prints quaternions in CSV format for the web UI and data collection
         vTaskDelay(pdMS_TO_TICKS(10));
     }
+}
+//Jonas Code to print quaternions in CSV format for the web UI and data collection
+static void print_quats_csv(void)
+{
+    for (int sensor = 0; sensor < NUMBER_OF_SENSORS; sensor++) {
+        for (int component = 0; component < 4; component++) {
+            if (sensor == NUMBER_OF_SENSORS - 1 && component == 3) {
+                printf("%.6f", (double)quat[sensor][component]);
+            } else {
+                printf("%.6f,", (double)quat[sensor][component]);
+            }
+        }
+    }
+    printf("\n");
 }
 /****************************************************
  * Basic Task structure without Core pinning.
