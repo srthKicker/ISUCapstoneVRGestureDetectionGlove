@@ -15,7 +15,7 @@
     --accent2:#ff3cac;
     --text:   #c8d8f0;
     --dim:    #3a4a6a;
-    --f0: #00f0ff; --f1: #ff3cac; --f2: #ffe600;
+    --f0: #00f0ff; --f1: #6a2b4f; --f2: #ffe600;
     --f3: #39ff14; --f4: #ff6d00; --f5: #bf5fff;
   }
 
@@ -196,7 +196,7 @@
   <button id="connect-btn">⬡ Connect Serial</button>
   <div id="status-box">Waiting for connection...</div>
   <div class="mono" style="display:flex;justify-content:space-between;padding:2px 0;border-top:1px solid var(--border)">
-    <span>BAUD</span><span>500000</span>
+    <span>BAUD</span><span>115200</span>
   </div>
   <div class="mono" style="display:flex;justify-content:space-between;padding:2px 0;border-top:1px solid var(--border)">
     <span>FORMAT</span><span>6 x w,x,y,z</span>
@@ -494,13 +494,13 @@ function doConnect() {
   navigator.serial.requestPort().then(function(p) {
     port = p;
     setStatus('Opening @ 115200...');
-    return port.open({ baudRate: 500000 });
+    return port.open({ baudRate: 115200 });
   }).then(function() {
     connected = true;
     btn.textContent = 'Disconnect';
     btn.classList.add('on');
     dot.classList.add('live');
-    setStatus('Connected @ 500000 baud');
+    setStatus('Connected @ 115200 baud');
     logLine('[SYS] Connected');
     readLoop();
   }).catch(function(e) {

@@ -6,7 +6,7 @@
 #include <string.h> // For memcpy
 //#include "bhi3.h" //For constants that the sensor might send over.
 
-#define I2C_TIMEOUT_MS 5000 // 1 second timeout, can change
+#define I2C_TIMEOUT_MS 50 // 1 second timeout, can change
 #define CHANNEL 0 //testing I2C Mux channel number will add into context
 
 // Write the channel select byte to the PCA9548A
@@ -93,8 +93,15 @@ int8_t bhi360_i2c_write(uint8_t regAddr, const uint8_t *data, uint32_t len, void
 
 
 //Simple delay function to pass to the BHI360 drivers.
-void bhi360_delay_us(uint32_t period, void *intf_ptr){
+/*void bhi360_delay_us(uint32_t period, void *intf_ptr){
     ets_delay_us(period);
+} */
+//Better delay function, doesnt busy wait as long
+void bhi360_delay_us(uint32_t period, void *intf_ptr) {
+    if (period >= 1000) {
+        vTaskDelay(pdMS_TO_TICKS(period / 1000)); //Non-busy wait any milliseconds
+    } else {
+        ets_delay_us(period); //Busy wait any microseconds
+    }
 }
-
 

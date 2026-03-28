@@ -28,7 +28,7 @@
 #define SCL_PIN 8 //same as sck with my wiring
 #define RESET_PIN 6
 //I2C stuff
-#define I2C_RATE_HZ 1000000 //The clock frequency for i2c
+#define I2C_RATE_HZ 400000 //The clock frequency for i2c
 #define I2C_TIMEOUT_US 2000 //timeout for clock stretching (if the device needs a bit longer it stretches the clock somehow)
 
 /*
@@ -367,7 +367,7 @@ void pollSensors_Task(void *pvParameters) {
         }
             */ // Didn't want to accidentally break it so my code is below that should replace this 
         print_quats_csv(); //Prints quaternions in CSV format for the web UI and data collection
-        vTaskDelay(pdMS_TO_TICKS(10));
+        //vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -379,9 +379,9 @@ void app_main(void) {
     xTaskCreate(
         pollSensors_Task,           //Task Function
         "Sensor Data Collection",   //Debugging Task Name
-        4096,                       //Stack Size in Bytes
+        8192,                       //Stack Size in Bytes
         NULL,                       //Task Parameters
-        1,                          //Task Priority
+        5,                          //Task Priority
         NULL                        //Task Handle (Optional)
     );
 }
