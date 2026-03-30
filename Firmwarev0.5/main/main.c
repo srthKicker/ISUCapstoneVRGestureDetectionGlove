@@ -87,7 +87,8 @@ static i2cContext_t bhi360_contexts[NUMBER_OF_SENSORS]; //i2c context for each s
 static struct bhy2_dev bhi360_devs[NUMBER_OF_SENSORS]; //The actual API devices
 static uint8_t fifo_buf[NUMBER_OF_SENSORS][FIFO_BUFFER_SIZE]; // Buffer for sensor data
 //static float quat[NUMBER_OF_SENSORS][4]; //Current quaternion we have read from the sensor, no buffering
-static float quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; //Buffer for the quaternion data
+//static float quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; //Buffer for the quaternion data
+static int quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; //DATA COLLECTION CHANGE TEMPORARY, uses ints to speed up things
 static int bufferIndex = 0; //Stores what part of buffer we are storing to, starts at 0, goes to Buffer_Length at max
 
 //static Quat quats[NUMBER_OF_SENSORS]; //Working on changing to quaternion datatype
@@ -147,12 +148,13 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
             break;
     }
 
+    //DATA COLLECTION CHANGE: MODIFIED TO NOT SCALE AND THUS TAKE LESS TIME
     if (info->sensor_id == BHI360_VIRTUAL_SENSOR_ID) { 
         int16_t *q_raw = (int16_t *)info->data_ptr;
-        quat[sensorNumber][bufferIndex][0] = q_raw[3] / QUAT_SCALING_FACTOR;
-        quat[sensorNumber][bufferIndex][1] = q_raw[0] / QUAT_SCALING_FACTOR;
-        quat[sensorNumber][bufferIndex][2] = q_raw[1] / QUAT_SCALING_FACTOR;
-        quat[sensorNumber][bufferIndex][3] = q_raw[2] / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][bufferIndex][0] = q_raw[3];// / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][bufferIndex][1] = q_raw[0];// / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][bufferIndex][2] = q_raw[1];// / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][bufferIndex][3] = q_raw[2];// / QUAT_SCALING_FACTOR;
         //bufferIndex++; //Increment the index of the buffer
     }
 }
@@ -374,8 +376,8 @@ static void print_quats_csv(void) {
     fwrite(buf, 1, pos, stdout);  // single call into the USB stack
 }
 */
-//Includes a flush, saves around 4ms per row
-static void print_quats_csv(void) {
+//Includes a flush, less float digits saves around 4ms per row
+/*static void print_quats_csv(void) {
     char buf[512];
     char *p = buf;
     for (int s = 0; s < NUMBER_OF_SENSORS; s++) {
@@ -388,10 +390,26 @@ static void print_quats_csv(void) {
     *p++ = '\n';
     fwrite(buf, 1, p - buf, stdout);
     fflush(stdout);  // force commit to USB CDC layer
-} 
+} */
 
+//Uses integers to speed up computation
+//MUST DO CALCULATIONS ON SIDE OF DATA COLLECTION
+static void print_quats_csv(void){
+    char buf[512];
+    char *p = buf;
+    for (int s = 0; s < NUMBER_OF_SENSORS; s++) {
+        for (int c = 0; c < 4; c++) {
+            p += sprintf(p, "%d", quat[s][bufferIndex][c]);
+            if (!(s == NUMBER_OF_SENSORS-1 && c == 3))
+                *p++ = ',';
+        }
+    }
+    *p++ = '\n';
+    fwrite(buf, 1, p - buf, stdout);
+    fflush(stdout);  // force commit to USB CDC layer
+}
 
-//Option that includes tinyusb files
+//Option that includes tinyusb files, untested
 /*#include "tinyusb.h"
 #include "tusb_cdc_acm.h"
 
