@@ -23,6 +23,8 @@
 #define BHI360_VIRTUAL_SENSOR_ID BHI360_SENSORID_GV //Change to change virtual sensor value
 
 #define NUMBER_OF_SENSORS 6 //this won't change lol, just removes magic numbers
+#define BUFFER_LENGTH 4 //Size of the buffer that will be used to store recent 
+#define FIFO_BUFFER_SIZE 256 //was 4096, testing
 //Pin numbers
 #define SDA_PIN 7 //same as mosi with my wiring
 #define SCL_PIN 8 //same as sck with my wiring
@@ -60,11 +62,13 @@ const char *TAG = "Testing";
 const uint8_t SensorAddress = 0x28; //0x28 if sdo grounded for BHI360 or 0x29 if sdo set to 1.8v
 const uint8_t MuxAddress = 0x70; // 0x70 is for MUX when all address pins are untouched
 const float SensorSampleRate = 100.0f; //sample rate in HZ I think
-const uint32_t SensorLatency = 0; //Something with buffering and stuff, ill explain later
+//Tells bhi360 how long to buffer data for
+const uint32_t SensorLatency = 10; //Something with buffering and stuff, ill explain later 
 //Helps determine which channel goes to which sensor
 static const uint8_t MUX_CHANNEL_BY_SENSOR[NUMBER_OF_SENSORS] =
     {WRIST_CHANNEL, THUMB_CHANNEL, POINTER_CHANNEL, MIDDLE_CHANNEL, RING_CHANNEL, PINKY_CHANNEL}; 
 const enum bhy2_intf intf = BHY2_I2C_INTERFACE;
+
 
 /*
 Static variables
@@ -81,13 +85,17 @@ static i2c_device_config_t bhi360_configs[NUMBER_OF_SENSORS]; //Device configura
 static i2c_master_dev_handle_t bhi360_handles[NUMBER_OF_SENSORS];
 static i2cContext_t bhi360_contexts[NUMBER_OF_SENSORS]; //i2c context for each sensor
 static struct bhy2_dev bhi360_devs[NUMBER_OF_SENSORS]; //The actual API devices
-static uint8_t fifo_buf[NUMBER_OF_SENSORS][4096]; // Buffer for sensor data. ~0.5KB memory, shouldn't be too much at all. May expand if needed
-static float quat[NUMBER_OF_SENSORS][4]; //Current quaternion we have read from the sensor
+static uint8_t fifo_buf[NUMBER_OF_SENSORS][FIFO_BUFFER_SIZE]; // Buffer for sensor data
+//static float quat[NUMBER_OF_SENSORS][4]; //Current quaternion we have read from the sensor, no buffering
+static float quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; //Buffer for the quaternion data
+static int bufferIndex = 0; //Stores what part of buffer we are storing to, starts at 0, goes to Buffer_Length at max
+
 //static Quat quats[NUMBER_OF_SENSORS]; //Working on changing to quaternion datatype
 
 //Debug function to visualize whats going on
 //I just found this logic, i dont know how it works but it seems to lol
-static void quatToEuler(const float *q) {
+//Is unused currently
+/*static void quatToEuler(const float *q) {
     float sinr_cosp = 2.0f * (q[0] * q[1] + q[2] * q[3]);
     float cosr_cosp = 1.0f - 2.0f * (q[1]*q[1] + q[2]*q[2]);
     float roll = atan2f(sinr_cosp, cosr_cosp);
@@ -106,7 +114,7 @@ static void quatToEuler(const float *q) {
     
     ESP_LOGI("Euler", "roll=%.1f° pitch=%.1f° yaw=%.1f°", 
              roll * 180.0f / M_PI, pitch * 180.0f / M_PI, yaw * 180.0f / M_PI);
-}
+}*/
 
 
 //Scales raw data to correct data amount.
@@ -141,10 +149,11 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
 
     if (info->sensor_id == BHI360_VIRTUAL_SENSOR_ID) { 
         int16_t *q_raw = (int16_t *)info->data_ptr;
-        quat[sensorNumber][0] = q_raw[3] / QUAT_SCALING_FACTOR;
-        quat[sensorNumber][1] = q_raw[0] / QUAT_SCALING_FACTOR;
-        quat[sensorNumber][2] = q_raw[1] / QUAT_SCALING_FACTOR;
-        quat[sensorNumber][3] = q_raw[2] / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][bufferIndex][0] = q_raw[3] / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][bufferIndex][1] = q_raw[0] / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][bufferIndex][2] = q_raw[1] / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][bufferIndex][3] = q_raw[2] / QUAT_SCALING_FACTOR;
+        //bufferIndex++; //Increment the index of the buffer
     }
 }
 
@@ -287,20 +296,21 @@ Normalizes the *temporary* quaternion passed
 Do not put in the hand data into this
 This will have to be a 
 */
-void normalizeQuat(float * q) {
+/*void normalizeQuat(float * q) {
     float mag = sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
     q[0] = q[0]/mag;
     q[1] = q[1]/mag;
     q[2] = q[2]/mag;
     q[3] = q[3]/mag;
-}
+}*/
 /*
 First is wrist quat, second is quaternion to be a finger
 Do NOT pass a float array that is not a quaternion
 Uses logic FingerOriented = Inverse(WristQuaternion) * FingerQuaternion
 Thus it orients the quaternion to the wrist by dewinding the
 */
-static void orientFinger(float *wQ, float *fQ) {
+
+/*static void orientFinger(float *wQ, float *fQ) {
     normalizeQuat(wQ);
     normalizeQuat(fQ);
 
@@ -323,7 +333,7 @@ static void orientFinger(float *wQ, float *fQ) {
     fQ[2] = r[2];
     fQ[3] = r[3];
 }
-
+*/
 //Polls each of the six imus and stores data in the quat vector via the callback
 static void pollSensors(){
     for(int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++){
@@ -335,42 +345,104 @@ static void pollSensors(){
 }
 
 //Jonas Code to print quaternions in CSV format for the web UI and data collection
-static void print_quats_csv(void)
+/*static void print_quats_csv(void)
 {
+    
     for (int sensor = 0; sensor < NUMBER_OF_SENSORS; sensor++) {
         for (int component = 0; component < 4; component++) {
             if (sensor == NUMBER_OF_SENSORS - 1 && component == 3) {
-                printf("%.6f", (double)quat[sensor][component]);
+                printf("%.6f", (double)quat[sensor][bufferIndex][component]);
             } else {
-                printf("%.6f,", (double)quat[sensor][component]);
+                printf("%.6f,", (double)quat[sensor][bufferIndex][component]);
             }
         }
     }
     printf("\n");
+    
+}*/
+/* //Fwrite version
+static void print_quats_csv(void) {
+    char buf[512];
+    int pos = 0;
+    for (int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++) {
+        for (int comp = 0; comp < 4; comp++) {
+            pos += snprintf(buf + pos, sizeof(buf) - pos,
+                (sensorNum == NUMBER_OF_SENSORS-1 && comp == 3) ? "%.6f\n" : "%.6f,",
+                (double)quat[sensorNum][bufferIndex][comp]);
+        }
+    }
+    fwrite(buf, 1, pos, stdout);  // single call into the USB stack
 }
+*/
+//Includes a flush, saves around 4ms per row
+static void print_quats_csv(void) {
+    char buf[512];
+    char *p = buf;
+    for (int s = 0; s < NUMBER_OF_SENSORS; s++) {
+        for (int c = 0; c < 4; c++) {
+            p += sprintf(p, "%.6f", (double)quat[s][bufferIndex][c]);
+            if (!(s == NUMBER_OF_SENSORS-1 && c == 3))
+                *p++ = ',';
+        }
+    }
+    *p++ = '\n';
+    fwrite(buf, 1, p - buf, stdout);
+    fflush(stdout);  // force commit to USB CDC layer
+} 
+
+
+//Option that includes tinyusb files
+/*#include "tinyusb.h"
+#include "tusb_cdc_acm.h"
+
+static void print_quats_csv(void) {
+    char buf[512];
+    char *p = buf;
+    for (int s = 0; s < NUMBER_OF_SENSORS; s++) {
+        for (int c = 0; c < 4; c++) {
+            p += sprintf(p, "%.4f", (double)quat[s][bufferIndex][c]);
+            if (!(s == NUMBER_OF_SENSORS-1 && c == 3))
+                *p++ = ',';
+        }
+    }
+    *p++ = '\n';
+    tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, (uint8_t*)buf, p - buf);
+    tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, 0); // 0 = no timeout, non-blocking
+}*/
+
+
 /********************************************************
  * This is Seth's code that polls the IMUs
  * to print their output as Euler vectors
  * converted to a FreeRTOS task function.
  * (Originally app_main)
  ********************************************************/
-
-void pollSensors_Task(void *pvParameters) {
-    setupAll();
+/*void pollSensors_Task(void *pvParameters) {
+    setupAll(); 
 
     while(1){
-        pollSensors();
+        pollSensors();*/
         /*
         for(int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++){
             ESP_LOGI("Euler", "sensor %d", sensorNum);
             quatToEuler(quat[sensorNum]);
         }
             */ // Didn't want to accidentally break it so my code is below that should replace this 
-        print_quats_csv(); //Prints quaternions in CSV format for the web UI and data collection
-        //vTaskDelay(pdMS_TO_TICKS(10));
+       /* print_quats_csv(); //Prints quaternions in CSV format for the web UI and data collection
+        //vTaskDelay(pdMS_TO_TICKS(10)); //Removing artificial delay to maximize speed
+    }
+}*/
+void pollSensors_Task(void *pvParameters) { //Test to include time
+    setupAll();
+    while(1){
+        int64_t t0 = esp_timer_get_time();
+        pollSensors();
+        int64_t t1 = esp_timer_get_time();
+        print_quats_csv();
+        int64_t t2 = esp_timer_get_time();
+        ESP_LOGI("TIMING", "poll=%lldus print=%lldus", t1-t0, t2-t1);
     }
 }
-
 /****************************************************
  * Basic Task structure without Core pinning.
  * Testing for Familiarity.
