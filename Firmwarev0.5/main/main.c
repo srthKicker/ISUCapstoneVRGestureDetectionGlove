@@ -88,7 +88,7 @@ static struct bhy2_dev bhi360_devs[NUMBER_OF_SENSORS]; //The actual API devices
 static uint8_t fifo_buf[NUMBER_OF_SENSORS][FIFO_BUFFER_SIZE]; // Buffer for sensor data
 //static float quat[NUMBER_OF_SENSORS][4]; //Current quaternion we have read from the sensor, no buffering
 //static float quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; //Buffer for the quaternion data
-static int quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; //DATA COLLECTION CHANGE TEMPORARY, uses ints to speed up things
+static int16_t quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; //DATA COLLECTION CHANGE TEMPORARY, uses ints to speed up things
 static int bufferIndex = 0; //Stores what part of buffer we are storing to, starts at 0, goes to Buffer_Length at max
 
 //static Quat quats[NUMBER_OF_SENSORS]; //Working on changing to quaternion datatype
@@ -312,16 +312,19 @@ Uses logic FingerOriented = Inverse(WristQuaternion) * FingerQuaternion
 Thus it orients the quaternion to the wrist by dewinding the
 */
 
-/*static void orientFinger(float *wQ, float *fQ) {
-    normalizeQuat(wQ);
-    normalizeQuat(fQ);
+static void orientFinger(int16_t *wQint, int16_t *fQint) {
 
     float inv[4]; //inverse wrist quaternion
-    inv[0] =  wQ[0];
-    inv[1] = -wQ[1];
-    inv[2] = -wQ[2];
-    inv[3] = -wQ[3];
+    inv[0] =  wQint[0]/QUAT_SCALING_FACTOR;
+    inv[1] = -wQint[1]/QUAT_SCALING_FACTOR;
+    inv[2] = -wQint[2]/QUAT_SCALING_FACTOR;
+    inv[3] = -wQint[3]/QUAT_SCALING_FACTOR;
 
+    float fQ[4];
+    fQ[0] =  fQint[0]/QUAT_SCALING_FACTOR;
+    fQ[1] = fQint[1]/QUAT_SCALING_FACTOR;
+    fQ[2] = fQint[2]/QUAT_SCALING_FACTOR;
+    fQ[3] = fQint[3]/QUAT_SCALING_FACTOR;
     // q_local = inv(wrist) * finger_world
     // result stored back into fQ
     float r[4]; //have to have a temp array
@@ -330,12 +333,18 @@ Thus it orients the quaternion to the wrist by dewinding the
     r[2] = inv[0]*fQ[2] - inv[1]*fQ[3] + inv[2]*fQ[0] + inv[3]*fQ[1];
     r[3] = inv[0]*fQ[3] + inv[1]*fQ[2] - inv[2]*fQ[1] + inv[3]*fQ[0];
 
-    fQ[0] = r[0];
-    fQ[1] = r[1];
-    fQ[2] = r[2];
-    fQ[3] = r[3];
+    fQint[0] = r[0]*QUAT_SCALING_FACTOR;
+    fQint[1] = r[1]*QUAT_SCALING_FACTOR;
+    fQint[2] = r[2]*QUAT_SCALING_FACTOR;
+    fQint[3] = r[3]*QUAT_SCALING_FACTOR;
 }
-*/
+
+static void orientAllFingers(){
+    for(int sensor = 1; sensor <= 5; sensor ++){
+        // Wrist quat isi 0, we will orient each finger
+        orientFinger(quat[0][bufferIndex], quat[sensor][bufferIndex]);
+    }
+}
 //Polls each of the six imus and stores data in the quat vector via the callback
 static void pollSensors(){
     for(int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++){
@@ -453,12 +462,14 @@ static void print_quats_csv(void) {
 void pollSensors_Task(void *pvParameters) { //Test to include time
     setupAll();
     while(1){
-        int64_t t0 = esp_timer_get_time();
+        //int64_t t0 = esp_timer_get_time();
         pollSensors();
-        int64_t t1 = esp_timer_get_time();
+        //int64_t t1 = esp_timer_get_time();
+        orientAllFingers();
+        //int64_t t2 = esp_timer_get_time();
         print_quats_csv();
-        int64_t t2 = esp_timer_get_time();
-        ESP_LOGI("TIMING", "poll=%lldus print=%lldus", t1-t0, t2-t1);
+        //int64_t t3 = esp_timer_get_time();
+        //ESP_LOGI("TIMING", "poll=%lldus, orient = %lldus, print=%lldus", t1-t0, t2-t1, t3-t2);
     }
 }
 /****************************************************
