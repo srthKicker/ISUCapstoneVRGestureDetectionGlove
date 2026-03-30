@@ -574,7 +574,7 @@
             // Need exactly 24 values (6 IMUs x 4 quaternion components)
             if (parts.length < 24) return;
 
-            const values = parts.slice(0, 24).map(Number);
+            const values = parts.slice(0, 24).map(v => Number(v) / 16384); //Scale it to standard quaternion
 
             // Reject if any value is NaN
             if (values.some(isNaN)) return;

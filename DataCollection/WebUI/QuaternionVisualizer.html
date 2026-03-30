@@ -454,7 +454,7 @@ function setStatus(msg, isErr) {
 // ── PACKET PARSE ─────────────────────────────────────────
 var pktCount=0, fpsT=Date.now(), fpsF=0;
 function parsePacket(line) {
-  var vals = line.split(',').map(function(s){ return parseFloat(s.trim()); })
+  var vals = line.split(',').map(function(s){ return parseFloat(s.trim()) / 16384; })
                             .filter(function(v){ return !isNaN(v); });
   if (vals.length < 24) return false;
   for (var i=0; i<6; i++) {
