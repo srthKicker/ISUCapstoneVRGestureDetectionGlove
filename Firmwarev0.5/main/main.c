@@ -23,7 +23,7 @@
 #define BHI360_VIRTUAL_SENSOR_ID BHI360_SENSORID_GV //Change to change virtual sensor value
 
 #define NUMBER_OF_SENSORS 6 //this won't change lol, just removes magic numbers
-#define BUFFER_LENGTH 4 //Size of the buffer that will be used to store recent 
+#define BUFFER_LENGTH 8 //Size of the buffer that will be used to store recent 
 #define FIFO_BUFFER_SIZE 256 //was 4096, testing
 //Pin numbers
 #define SDA_PIN 7 //same as mosi with my wiring
@@ -89,7 +89,9 @@ static uint8_t fifo_buf[NUMBER_OF_SENSORS][FIFO_BUFFER_SIZE]; // Buffer for sens
 //static float quat[NUMBER_OF_SENSORS][4]; //Current quaternion we have read from the sensor, no buffering
 static float quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; //Buffer for the quaternion data
 //static int16_t quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; //DATA COLLECTION CHANGE TEMPORARY, uses ints to speed up things
-static int bufferIndex = 0; //Stores what part of buffer we are storing to, starts at 0, goes to Buffer_Length at max
+static int16_t bufferWriteIndex = 0; //Stores what part of buffer we are storing to, starts at 0, goes to Buffer_Length at max 
+
+static int16_t printableQuat[NUMBER_OF_SENSORS][4]; //Used to store oriented quaternions in int16 format before printing
 
 //static Quat quats[NUMBER_OF_SENSORS]; //Working on changing to quaternion datatype
 
@@ -148,14 +150,13 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
             break;
     }
 
-    //DATA COLLECTION CHANGE: MODIFIED TO NOT SCALE AND THUS TAKE LESS TIME
     if (info->sensor_id == BHI360_VIRTUAL_SENSOR_ID) { 
+        
         int16_t *q_raw = (int16_t *)info->data_ptr;
-        quat[sensorNumber][bufferIndex][0] = q_raw[3]/ QUAT_SCALING_FACTOR;
-        quat[sensorNumber][bufferIndex][1] = q_raw[0] / QUAT_SCALING_FACTOR;
-        quat[sensorNumber][bufferIndex][2] = q_raw[1] / QUAT_SCALING_FACTOR;
-        quat[sensorNumber][bufferIndex][3] = q_raw[2] / QUAT_SCALING_FACTOR;
-        //bufferIndex++; //Increment the index of the buffer
+        quat[sensorNumber][bufferWriteIndex][0] = q_raw[3]/ QUAT_SCALING_FACTOR;
+        quat[sensorNumber][bufferWriteIndex][1] = q_raw[0] / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][bufferWriteIndex][2] = q_raw[1] / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][bufferWriteIndex][3] = q_raw[2] / QUAT_SCALING_FACTOR;
     }
 }
 
@@ -312,7 +313,7 @@ Uses logic FingerOriented = Inverse(WristQuaternion) * FingerQuaternion
 Thus it orients the quaternion to the wrist by dewinding the
 */
 
-static void orientFinger(float *wQint, float *fQ) {
+static void orientFinger(float *wQint, float *fQ, int16_t sensorIndex) {
 
     float inv[4]; //inverse wrist quaternion
     inv[0] =  wQint[0];///QUAT_SCALING_FACTOR;
@@ -320,47 +321,42 @@ static void orientFinger(float *wQint, float *fQ) {
     inv[2] = -wQint[2];///QUAT_SCALING_FACTOR;
     inv[3] = -wQint[3];///QUAT_SCALING_FACTOR;
 
-    /*float fQ[4];
-    fQ[0] =  fQint[0]/QUAT_SCALING_FACTOR;
-    fQ[1] = fQint[1]/QUAT_SCALING_FACTOR;
-    fQ[2] = fQint[2]/QUAT_SCALING_FACTOR;
-    fQ[3] = fQint[3]/QUAT_SCALING_FACTOR;
-    */
-    // q_local = inv(wrist) * finger_world
-    // result stored back into fQ
     float r[4]; //have to have a temp array
-    /*
+    
+    //This order is inv(wQ) * fQ
     r[0] = inv[0]*fQ[0] - inv[1]*fQ[1] - inv[2]*fQ[2] - inv[3]*fQ[3];
     r[1] = inv[0]*fQ[1] + inv[1]*fQ[0] + inv[2]*fQ[3] - inv[3]*fQ[2];
     r[2] = inv[0]*fQ[2] - inv[1]*fQ[3] + inv[2]*fQ[0] + inv[3]*fQ[1];
     r[3] = inv[0]*fQ[3] + inv[1]*fQ[2] - inv[2]*fQ[1] + inv[3]*fQ[0];
-    */
-   r[0] = fQ[0]*inv[0] - fQ[1]*inv[1] - fQ[2]*inv[2] - fQ[3]*inv[3];
+    
+    //This order is fQ * inv(wQ)
+   /*r[0] = fQ[0]*inv[0] - fQ[1]*inv[1] - fQ[2]*inv[2] - fQ[3]*inv[3];
    r[1] = fQ[0]*inv[1] + fQ[1]*inv[0] + fQ[2]*inv[3] - fQ[3]*inv[2];
     r[2] = fQ[0]*inv[2] - fQ[1]*inv[3] + fQ[2]*inv[0] + fQ[3]*inv[1];
-    r[3] = fQ[0]*inv[3] + fQ[1]*inv[2] - fQ[2]*inv[1] + fQ[3]*inv[0];
-    float norm = sqrtf(r[0]*r[0] + r[1]*r[1] + r[2]*r[2] + r[3]*r[3]);
+    r[3] = fQ[0]*inv[3] + fQ[1]*inv[2] - fQ[2]*inv[1] + fQ[3]*inv[0]; */
 
+    //Normalize the new quaternions for safety
+    float norm = sqrtf(r[0]*r[0] + r[1]*r[1] + r[2]*r[2] + r[3]*r[3]);
     for (int i= 0; i < 4; i++) r[i] /= norm;
     
 
-    fQ[0] = r[0];// *QUAT_SCALING_FACTOR;
-    fQ[1] = r[1];// *QUAT_SCALING_FACTOR;
-    fQ[2] = r[2];// *QUAT_SCALING_FACTOR;
-    fQ[3] = r[3];// *QUAT_SCALING_FACTOR;
+    printableQuat[sensorIndex][0] = r[0] *QUAT_SCALING_FACTOR;
+    printableQuat[sensorIndex][1] = r[1] *QUAT_SCALING_FACTOR;
+    printableQuat[sensorIndex][2] = r[2] *QUAT_SCALING_FACTOR;
+    printableQuat[sensorIndex][3] = r[3] *QUAT_SCALING_FACTOR;
     
 }
 
 static void orientAllFingers(){
+    for(int i = 0; i<4; i++){
+        printableQuat[0][i] = quat[0][bufferWriteIndex][i]; //Directly copy the wrist over to be printed
+    }
     for(int sensor = 1; sensor <= 5; sensor ++){
         // Wrist quat isi 0, we will orient each finger
-        orientFinger(quat[0][bufferIndex], quat[sensor][bufferIndex]);
+        orientFinger(quat[0][bufferWriteIndex], quat[sensor][bufferWriteIndex], sensor);
     }
 }
 
-static void orientWrist(){
-    orientFinger(quat[0][bufferIndex], quat[0][bufferIndex]);
-}
 //Polls each of the six imus and stores data in the quat vector via the callback
 static void pollSensors(){
     for(int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++){
@@ -369,89 +365,28 @@ static void pollSensors(){
             ESP_LOGE("I2C Error", "FIFO err: %d", err);
         }
     }
+    bufferWriteIndex = (bufferWriteIndex+1)%BUFFER_LENGTH; //Wrap buffer, we dont mind overwriting some data if its that old
 }
 
 //Jonas Code to print quaternions in CSV format for the web UI and data collection
-/*static void print_quats_csv(void)
-{
-    
-    for (int sensor = 0; sensor < NUMBER_OF_SENSORS; sensor++) {
-        for (int component = 0; component < 4; component++) {
-            if (sensor == NUMBER_OF_SENSORS - 1 && component == 3) {
-                printf("%.6f", (double)quat[sensor][bufferIndex][component]);
-            } else {
-                printf("%.6f,", (double)quat[sensor][bufferIndex][component]);
-            }
-        }
-    }
-    printf("\n");
-    
-}*/
-/* //Fwrite version
-static void print_quats_csv(void) {
-    char buf[512];
-    int pos = 0;
-    for (int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++) {
-        for (int comp = 0; comp < 4; comp++) {
-            pos += snprintf(buf + pos, sizeof(buf) - pos,
-                (sensorNum == NUMBER_OF_SENSORS-1 && comp == 3) ? "%.6f\n" : "%.6f,",
-                (double)quat[sensorNum][bufferIndex][comp]);
-        }
-    }
-    fwrite(buf, 1, pos, stdout);  // single call into the USB stack
-}
-*/
-//Includes a flush, less float digits saves around 4ms per row
-/*static void print_quats_csv(void) {
-    char buf[512];
-    char *p = buf;
-    for (int s = 0; s < NUMBER_OF_SENSORS; s++) {
-        for (int c = 0; c < 4; c++) {
-            p += sprintf(p, "%.6f", (double)quat[s][bufferIndex][c]);
-            if (!(s == NUMBER_OF_SENSORS-1 && c == 3))
-                *p++ = ',';
-        }
-    }
-    *p++ = '\n';
-    fwrite(buf, 1, p - buf, stdout);
-    fflush(stdout);  // force commit to USB CDC layer
-} */
-
 //Uses integers to speed up computation
 //MUST DO CALCULATIONS ON SIDE OF DATA COLLECTION
 static void print_quats_csv(void){
-    char buf[512];
-    char *p = buf;
-    for (int s = 0; s < NUMBER_OF_SENSORS; s++) {
-        for (int c = 0; c < 4; c++) {
-            p += sprintf(p, "%d", (int16_t)(QUAT_SCALING_FACTOR*quat[s][bufferIndex][c]));
-            if (!(s == NUMBER_OF_SENSORS-1 && c == 3))
-                *p++ = ',';
+    //Print recent indexes in buffer
+    int bI = bufferWriteIndex;
+        char buf[512];
+        char *p = buf;
+        for (int s = 0; s < NUMBER_OF_SENSORS; s++) {
+            for (int c = 0; c < 4; c++) {
+                p += sprintf(p, "%d", (int16_t)(QUAT_SCALING_FACTOR*quat[s][bI][c]));
+                if (!(s == NUMBER_OF_SENSORS-1 && c == 3))
+                    *p++ = ',';
+            }
         }
-    }
-    *p++ = '\n';
-    fwrite(buf, 1, p - buf, stdout);
-    fflush(stdout);  // force commit to USB CDC layer
+        *p++ = '\n';
+        fwrite(buf, 1, p - buf, stdout);
+        fflush(stdout);  // force commit to USB CDC layer
 }
-
-//Option that includes tinyusb files, untested
-/*#include "tinyusb.h"
-#include "tusb_cdc_acm.h"
-
-static void print_quats_csv(void) {
-    char buf[512];
-    char *p = buf;
-    for (int s = 0; s < NUMBER_OF_SENSORS; s++) {
-        for (int c = 0; c < 4; c++) {
-            p += sprintf(p, "%.4f", (double)quat[s][bufferIndex][c]);
-            if (!(s == NUMBER_OF_SENSORS-1 && c == 3))
-                *p++ = ',';
-        }
-    }
-    *p++ = '\n';
-    tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, (uint8_t*)buf, p - buf);
-    tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, 0); // 0 = no timeout, non-blocking
-}*/
 
 
 /********************************************************
@@ -460,21 +395,6 @@ static void print_quats_csv(void) {
  * converted to a FreeRTOS task function.
  * (Originally app_main)
  ********************************************************/
-/*void pollSensors_Task(void *pvParameters) {
-    setupAll(); 
-
-    while(1){
-        pollSensors();*/
-        /*
-        for(int sensorNum = 0; sensorNum < NUMBER_OF_SENSORS; sensorNum++){
-            ESP_LOGI("Euler", "sensor %d", sensorNum);
-            quatToEuler(quat[sensorNum]);
-        }
-            */ // Didn't want to accidentally break it so my code is below that should replace this 
-       /* print_quats_csv(); //Prints quaternions in CSV format for the web UI and data collection
-        //vTaskDelay(pdMS_TO_TICKS(10)); //Removing artificial delay to maximize speed
-    }
-}*/
 void pollSensors_Task(void *pvParameters) { //Test to include time
     setupAll();
     while(1){
