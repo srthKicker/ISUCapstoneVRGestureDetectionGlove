@@ -9,7 +9,7 @@
 #include "stdint.h"
 #include "math.h"
 #include "driver/gpio.h"
-#include "Quat.h"
+//#include "Quat.h" //Unused for now
 
 //These are the virtual sensor settings: (Page 103-104 of datasheet)
 //Rotation vector REQUIRES magnetometer BMM150/350, but has accuracy field
@@ -86,38 +86,15 @@ static i2c_master_dev_handle_t bhi360_handles[NUMBER_OF_SENSORS];
 static i2cContext_t bhi360_contexts[NUMBER_OF_SENSORS]; //i2c context for each sensor
 static struct bhy2_dev bhi360_devs[NUMBER_OF_SENSORS]; //The actual API devices
 static uint8_t fifo_buf[NUMBER_OF_SENSORS][FIFO_BUFFER_SIZE]; // Buffer for sensor data
-//static float quat[NUMBER_OF_SENSORS][4]; //Current quaternion we have read from the sensor, no buffering
-static float quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; //Buffer for the quaternion data
+static float quat[NUMBER_OF_SENSORS][4]; //Current quaternion we have read from the sensor, no buffering
+//static float quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; //Buffer for the quaternion data
 //static int16_t quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; //DATA COLLECTION CHANGE TEMPORARY, uses ints to speed up things
-static int16_t bufferWriteIndex = 0; //Stores what part of buffer we are storing to, starts at 0, goes to Buffer_Length at max 
+//static int16_t bufferWriteIndex = 0; //Stores what part of buffer we are storing to, starts at 0, goes to Buffer_Length at max 
 
 static int16_t printableQuat[NUMBER_OF_SENSORS][4]; //Used to store oriented quaternions in int16 format before printing
 
 //static Quat quats[NUMBER_OF_SENSORS]; //Working on changing to quaternion datatype
 
-//Debug function to visualize whats going on
-//I just found this logic, i dont know how it works but it seems to lol
-//Is unused currently
-/*static void quatToEuler(const float *q) {
-    float sinr_cosp = 2.0f * (q[0] * q[1] + q[2] * q[3]);
-    float cosr_cosp = 1.0f - 2.0f * (q[1]*q[1] + q[2]*q[2]);
-    float roll = atan2f(sinr_cosp, cosr_cosp);
-    
-    float sinp = 2.0f * (q[0] * q[2] - q[3] * q[1]);  // Fixed: direct sin_pitch
-    float pitch;
-    if (fabsf(sinp) >= 1.0f) {
-        pitch = copysignf(M_PI / 2.0f, sinp);  // Gimbal lock handling
-    } else {
-        pitch = asinf(sinp);
-    }
-    
-    float siny_cosp = 2.0f * (q[0] * q[3] + q[1] * q[2]);
-    float cosy_cosp = 1.0f - 2.0f * (q[2]*q[2] + q[3]*q[3]);
-    float yaw = atan2f(siny_cosp, cosy_cosp);
-    
-    ESP_LOGI("Euler", "roll=%.1f° pitch=%.1f° yaw=%.1f°", 
-             roll * 180.0f / M_PI, pitch * 180.0f / M_PI, yaw * 180.0f / M_PI);
-}*/
 
 
 //Scales raw data to correct data amount.
@@ -153,10 +130,10 @@ static void rot_vec_cb(const struct bhy2_fifo_parse_data_info *info, void *priv)
     if (info->sensor_id == BHI360_VIRTUAL_SENSOR_ID) { 
         
         int16_t *q_raw = (int16_t *)info->data_ptr;
-        quat[sensorNumber][bufferWriteIndex][0] = q_raw[3]/ QUAT_SCALING_FACTOR;
-        quat[sensorNumber][bufferWriteIndex][1] = q_raw[0] / QUAT_SCALING_FACTOR;
-        quat[sensorNumber][bufferWriteIndex][2] = q_raw[1] / QUAT_SCALING_FACTOR;
-        quat[sensorNumber][bufferWriteIndex][3] = q_raw[2] / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][0] = q_raw[3]/ QUAT_SCALING_FACTOR;
+        quat[sensorNumber][1] = q_raw[0] / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][2] = q_raw[1] / QUAT_SCALING_FACTOR;
+        quat[sensorNumber][3] = q_raw[2] / QUAT_SCALING_FACTOR;
     }
 }
 
@@ -295,24 +272,11 @@ static void setupAll(){
 }
 
 /*
-Normalizes the *temporary* quaternion passed
-Do not put in the hand data into this
-This will have to be a 
-*/
-/*void normalizeQuat(float * q) {
-    float mag = sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
-    q[0] = q[0]/mag;
-    q[1] = q[1]/mag;
-    q[2] = q[2]/mag;
-    q[3] = q[3]/mag;
-}*/
-/*
 First is wrist quat, second is quaternion to be a finger
 Do NOT pass a float array that is not a quaternion
 Uses logic FingerOriented = Inverse(WristQuaternion) * FingerQuaternion
 Thus it orients the quaternion to the wrist by dewinding the
 */
-
 static void orientFinger(float *wQint, float *fQ, int16_t sensorIndex) {
 
     float inv[4]; //inverse wrist quaternion
@@ -328,12 +292,6 @@ static void orientFinger(float *wQint, float *fQ, int16_t sensorIndex) {
     r[1] = inv[0]*fQ[1] + inv[1]*fQ[0] + inv[2]*fQ[3] - inv[3]*fQ[2];
     r[2] = inv[0]*fQ[2] - inv[1]*fQ[3] + inv[2]*fQ[0] + inv[3]*fQ[1];
     r[3] = inv[0]*fQ[3] + inv[1]*fQ[2] - inv[2]*fQ[1] + inv[3]*fQ[0];
-    
-    //This order is fQ * inv(wQ)
-   /*r[0] = fQ[0]*inv[0] - fQ[1]*inv[1] - fQ[2]*inv[2] - fQ[3]*inv[3];
-   r[1] = fQ[0]*inv[1] + fQ[1]*inv[0] + fQ[2]*inv[3] - fQ[3]*inv[2];
-    r[2] = fQ[0]*inv[2] - fQ[1]*inv[3] + fQ[2]*inv[0] + fQ[3]*inv[1];
-    r[3] = fQ[0]*inv[3] + fQ[1]*inv[2] - fQ[2]*inv[1] + fQ[3]*inv[0]; */
 
     //Normalize the new quaternions for safety
     float norm = sqrtf(r[0]*r[0] + r[1]*r[1] + r[2]*r[2] + r[3]*r[3]);
@@ -349,11 +307,11 @@ static void orientFinger(float *wQint, float *fQ, int16_t sensorIndex) {
 
 static void orientAllFingers(){
     for(int i = 0; i<4; i++){
-        printableQuat[0][i] = quat[0][bufferWriteIndex][i]; //Directly copy the wrist over to be printed
+        printableQuat[0][i] = quat[0][i] * QUAT_SCALING_FACTOR; //Directly copy the wrist over to be printed
     }
     for(int sensor = 1; sensor <= 5; sensor ++){
         // Wrist quat isi 0, we will orient each finger
-        orientFinger(quat[0][bufferWriteIndex], quat[sensor][bufferWriteIndex], sensor);
+        orientFinger(quat[0], quat[sensor], sensor);
     }
 }
 
@@ -365,7 +323,7 @@ static void pollSensors(){
             ESP_LOGE("I2C Error", "FIFO err: %d", err);
         }
     }
-    bufferWriteIndex = (bufferWriteIndex+1)%BUFFER_LENGTH; //Wrap buffer, we dont mind overwriting some data if its that old
+    //bufferWriteIndex = (bufferWriteIndex+1)%BUFFER_LENGTH; //Wrap buffer, we dont mind overwriting some data if its that old
 }
 
 //Jonas Code to print quaternions in CSV format for the web UI and data collection
@@ -373,12 +331,11 @@ static void pollSensors(){
 //MUST DO CALCULATIONS ON SIDE OF DATA COLLECTION
 static void print_quats_csv(void){
     //Print recent indexes in buffer
-    int bI = bufferWriteIndex;
         char buf[512];
         char *p = buf;
         for (int s = 0; s < NUMBER_OF_SENSORS; s++) {
             for (int c = 0; c < 4; c++) {
-                p += sprintf(p, "%d", (int16_t)(QUAT_SCALING_FACTOR*quat[s][bI][c]));
+                p += sprintf(p, "%d", (int16_t)(printableQuat[s][c]));
                 if (!(s == NUMBER_OF_SENSORS-1 && c == 3))
                     *p++ = ',';
             }
