@@ -665,6 +665,11 @@
             entry.className   = 'data-log-entry';
             entry.textContent = `[${ts}] ${data}`;
             log.appendChild(entry);
+            // --- FIX START: Remove old entries ---
+            while (log.childNodes.length > 50) {
+                log.removeChild(log.firstChild);
+            }
+            // --- FIX END ---
             log.scrollTop = log.scrollHeight;
         }
     </script>
