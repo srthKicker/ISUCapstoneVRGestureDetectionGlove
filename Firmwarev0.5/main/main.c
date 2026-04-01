@@ -1,5 +1,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "driver/i2c_master.h"
@@ -10,6 +11,134 @@
 #include "math.h"
 #include "driver/gpio.h"
 //#include "Quat.h" //Unused for now
+
+//Tensor Flow headers to run model
+#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/version.h"
+
+
+// Generated model
+extern const unsigned char gesture_model_tflite[];
+extern const int gesture_model_tflite_len;
+
+#define NUMBER_OF_SENSORS 6
+#define QUAT_COMPONENTS   4
+#define FEATURES_PER_STEP (NUMBER_OF_SENSORS * QUAT_COMPONENTS)
+
+#define TIMESTEPS         300          // must match training
+#define RING_BUFFER_SIZE  512          // >= TIMESTEPS, power of 2 is nice
+
+static const char *TAG_ML = "ML";
+
+// 
+extern int quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; // but we’ll use a new struct below
+
+typedef struct {
+    int16_t data[FEATURES_PER_STEP];  // 24 values: [imu0_w, imu0_x, ..., imu5_z]
+} imu_frame_t;
+
+static imu_frame_t ring_buffer[RING_BUFFER_SIZE];
+static volatile uint32_t rb_head = 0;   // next write index
+static volatile uint32_t rb_count = 0;  // number of valid frames in buffer
+
+static SemaphoreHandle_t rb_mutex;
+
+static void rb_init(void)
+{
+    rb_head = 0;
+    rb_count = 0;
+    rb_mutex = xSemaphoreCreateMutex();
+}
+
+static void rb_push(const imu_frame_t *frame)
+{
+    xSemaphoreTake(rb_mutex, portMAX_DELAY);
+
+    uint32_t idx = rb_head % RING_BUFFER_SIZE;
+    ring_buffer[idx] = *frame;
+    rb_head++;
+    if (rb_count < RING_BUFFER_SIZE) {
+        rb_count++;
+    } else {
+        // overwrite oldest (implicit)
+    }
+
+    xSemaphoreGive(rb_mutex);
+}
+
+// Copy the last TIMESTEPS frames into dest[TIMESTEPS][FEATURES_PER_STEP]
+// Returns 0 on success, -1 if not enough data yet
+static int rb_get_last_window(imu_frame_t *dest, uint32_t window_size)
+{
+    int ret = 0;
+    xSemaphoreTake(rb_mutex, portMAX_DELAY);
+
+    if (rb_count < window_size) {
+        ret = -1;
+    } else {
+        uint32_t start = (rb_head - window_size) % RING_BUFFER_SIZE;
+        for (uint32_t i = 0; i < window_size; i++) {
+            uint32_t idx = (start + i) % RING_BUFFER_SIZE;
+            dest[i] = ring_buffer[idx];
+        }
+    }
+
+    xSemaphoreGive(rb_mutex);
+    return ret;
+}
+
+static void build_frame_from_quat(imu_frame_t *frame)
+{
+    // quat[sensor][bufferIndex][component]
+    // We’ll flatten into [sensor0_w, sensor0_x, ..., sensor5_z]
+    int idx = 0;
+    for (int s = 0; s < NUMBER_OF_SENSORS; s++) {
+        frame->data[idx++] = (int16_t)quat[s][bufferIndex][0];
+        frame->data[idx++] = (int16_t)quat[s][bufferIndex][1];
+        frame->data[idx++] = (int16_t)quat[s][bufferIndex][2];
+        frame->data[idx++] = (int16_t)quat[s][bufferIndex][3];
+    }
+}
+
+
+// Adjust size based on model; start big, then shrink
+static const int kTensorArenaSize = 80 * 1024;
+static uint8_t tensor_arena[kTensorArenaSize];
+
+static const tflite::Model *model = nullptr;
+static tflite::MicroInterpreter *interpreter = nullptr;
+static TfLiteTensor *input_tensor = nullptr;
+static TfLiteTensor *output_tensor = nullptr;
+
+static void ml_init(void)
+{
+    model = tflite::GetModel(gesture_model_tflite);
+    if (model->version() != TFLITE_SCHEMA_VERSION) {
+        ESP_LOGE(TAG_ML, "Model schema %d not equal to supported %d",
+                 model->version(), TFLITE_SCHEMA_VERSION);
+        return;
+    }
+
+    static tflite::AllOpsResolver resolver;
+
+    static tflite::MicroInterpreter static_interpreter(
+        model, resolver, tensor_arena, kTensorArenaSize);
+    interpreter = &static_interpreter;
+
+    if (interpreter->AllocateTensors() != kTfLiteOk) {
+        ESP_LOGE(TAG_ML, "AllocateTensors() failed");
+        return;
+    }
+
+    input_tensor = interpreter->input(0);
+    output_tensor = interpreter->output(0);
+
+    ESP_LOGI(TAG_ML, "ML initialized: input dims: %d x %d",
+             input_tensor->dims->data[1],
+             input_tensor->dims->data[2]);
+}
 
 //These are the virtual sensor settings: (Page 103-104 of datasheet)
 //Rotation vector REQUIRES magnetometer BMM150/350, but has accuracy field
@@ -352,7 +481,7 @@ static void print_quats_csv(void){
  * converted to a FreeRTOS task function.
  * (Originally app_main)
  ********************************************************/
-void pollSensors_Task(void *pvParameters) { //Test to include time
+/*void pollSensors_Task(void *pvParameters) { //Test to include time
     setupAll();
     while(1){
         //int64_t t0 = esp_timer_get_time();
@@ -366,17 +495,107 @@ void pollSensors_Task(void *pvParameters) { //Test to include time
         //ESP_LOGI("TIMING", "poll=%lldus, orient = %lldus, print=%lldus", t1-t0, t2-t1, t3-t2);
     }
 }
+*/
+
+void pollSensors_Task(void *pvParameters)
+{
+    setupAll();
+    rb_init();   // initialize ring buffer
+
+    while (1) {
+        int64_t t0 = esp_timer_get_time();
+        pollSensors();
+        int64_t t1 = esp_timer_get_time();
+        orientAllFingers();
+        imu_frame_t frame;
+        build_frame_from_quat(&frame);
+        rb_push(&frame);
+
+        // Optional: still print for debugging
+        print_quats_csv();
+
+        int64_t t2 = esp_timer_get_time();
+        ESP_LOGI("TIMING", "poll=%lldus push+print=%lldus", t1 - t0, t2 - t1);
+    }
+}
+/*****************************************************
+ *  Tensor Flow Lite interpreter task to run ML model on ESP32 S3.
+*****************************************************/
+void ml_inference_task(void *pvParameters)
+{
+    ml_init();
+
+    imu_frame_t window[TIMESTEPS];
+
+    while (1) {
+        // 1. Try to get a full window
+        if (rb_get_last_window(window, TIMESTEPS) != 0) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+
+        // 2. Fill input tensor
+        // input_tensor->data.f is float*
+        float *in = input_tensor->data.f;
+        for (int t = 0; t < TIMESTEPS; t++) {
+            for (int f = 0; f < FEATURES_PER_STEP; f++) {
+                // Example: scale int16 to [-1, 1] or whatever you trained on
+                in[t * FEATURES_PER_STEP + f] = (float)window[t].data[f] / 16384.0f;
+            }
+        }
+
+        // 3. Run inference
+        if (interpreter->Invoke() != kTfLiteOk) {
+            ESP_LOGE(TAG_ML, "Invoke failed");
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+
+        // 4. Read output (assume softmax over num_classes)
+        int num_classes = output_tensor->dims->data[1];
+        float *out = output_tensor->data.f;
+
+        int best_idx = 0;
+        float best_val = out[0];
+        for (int i = 1; i < num_classes; i++) {
+            if (out[i] > best_val) {
+                best_val = out[i];
+                best_idx = i;
+            }
+        }
+
+        ESP_LOGI(TAG_ML, "Predicted gesture: %d (p=%.3f)", best_idx, best_val);
+
+        // 5. Control inference rate (e.g., every 100 ms)
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
 /****************************************************
- * Basic Task structure without Core pinning.
- * Testing for Familiarity.
+ * Basic Task structure.
+ * 
  ****************************************************/
 void app_main(void) {
-    xTaskCreate(
+    //IMU Polling
+    xTaskCreatePinnedToCore(
         pollSensors_Task,           //Task Function
         "Sensor Data Collection",   //Debugging Task Name
         8192,                       //Stack Size in Bytes
         NULL,                       //Task Parameters
         5,                          //Task Priority
-        NULL                        //Task Handle (Optional)
+        NULL,                       //Task Handle (Optional)
+        0                           //Core to Pin to
     );
+
+    // ML inference task
+    xTaskCreatePinnedToCore(
+        ml_inference_task,
+        "Gesture Detection",
+        12000,
+        NULL,
+        6,      // slightly higher priority
+        NULL,
+        1
+    );
+
+
 }
