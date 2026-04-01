@@ -355,15 +355,14 @@ static void print_quats_csv(void){
 void pollSensors_Task(void *pvParameters) { //Test to include time
     setupAll();
     while(1){
-        //int64_t t0 = esp_timer_get_time();
+        int64_t t0 = esp_timer_get_time();
         pollSensors();
-        //int64_t t1 = esp_timer_get_time();
+        int64_t t1 = esp_timer_get_time();
         orientAllFingers();
-        //orientWrist();
-        //int64_t t2 = esp_timer_get_time();
+        int64_t t2 = esp_timer_get_time();
         print_quats_csv();
-        //int64_t t3 = esp_timer_get_time();
-        //ESP_LOGI("TIMING", "poll=%lldus, orient = %lldus, print=%lldus", t1-t0, t2-t1, t3-t2);
+        int64_t t3 = esp_timer_get_time();
+        ESP_LOGI("TIMING", "poll=%lldus, orient = %lldus, print=%lldus", t1-t0, t2-t1, t3-t2);
     }
 }
 /****************************************************
