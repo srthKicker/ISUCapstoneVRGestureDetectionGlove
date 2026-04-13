@@ -4,7 +4,7 @@ import tensorflow as tf
 import numpy as np
 from dataLoader import load_dataset
 
-MODEL_PATH = "gesture_model.h5"
+MODEL_PATH = "gesture_model_left.keras"
 OUTPUT_TFLITE = "gesture_model_int8.tflite"
 
 # -----------------------------
