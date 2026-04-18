@@ -9,7 +9,12 @@
 #include "stdint.h"
 #include "math.h"
 #include "driver/gpio.h"
-//#include "Quat.h" //Unused for now
+//Machine learning stuff
+#include "gestureModelData.h"
+#include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+//#include "tensorflow/lite/version.h"
 
 //These are the virtual sensor settings: (Page 103-104 of datasheet)
 //Rotation vector REQUIRES magnetometer BMM150/350, but has accuracy field
@@ -34,6 +39,8 @@
 #define I2C_TIMEOUT_US 2000 //timeout for clock stretching (if the device needs a bit longer it stretches the clock somehow)
 #define SENSOR_SAMPLE_RATE  100.0f //sample rate in HZ I think
 #define DELAY_PERIOD 1000/SENSOR_SAMPLE_RATE //Amount of time to wait between sensor polling loops in milliseconds
+//Tells bhi360 how long to buffer data for
+#define SENSOR_LATENCY 0 //Something with buffering and stuff, ill explain later 
 /*
 GUIDE TO CHANNELS ON PROTOTYPE
 Channel 0 is nothing
@@ -63,8 +70,7 @@ const char *TAG = "Testing";
 const uint8_t SensorAddress = 0x28; //0x28 if sdo grounded for BHI360 or 0x29 if sdo set to 1.8v
 const uint8_t MuxAddress = 0x70; // 0x70 is for MUX when all address pins are untouched
 
-//Tells bhi360 how long to buffer data for
-const uint32_t SensorLatency = 10; //Something with buffering and stuff, ill explain later 
+
 //Helps determine which channel goes to which sensor
 static const uint8_t MUX_CHANNEL_BY_SENSOR[NUMBER_OF_SENSORS] =
     {WRIST_CHANNEL, THUMB_CHANNEL, POINTER_CHANNEL, MIDDLE_CHANNEL, RING_CHANNEL, PINKY_CHANNEL}; 
@@ -258,7 +264,13 @@ static void setupBHI360Devices(){
          * Update virtual sensor list & 
          * Declare the callback function to be called when FIFO is ready for a specific virtual sensor ID
          * */
-        bhy2_set_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, SENSOR_SAMPLE_RATE, SensorLatency, &bhi360_devs[sensorNumber]);
+        bhy2_set_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, SENSOR_SAMPLE_RATE, SENSOR_LATENCY, &bhi360_devs[sensorNumber]);
+
+        struct bhy2_virt_sensor_conf cfg;
+        bhy2_get_virt_sensor_cfg(BHI360_VIRTUAL_SENSOR_ID, &cfg, &bhi360_devs[sensorNumber]);
+        ESP_LOGI("Data rate I guess", " I asked for %.2fHz, She actually gave %.2fHz", SENSOR_SAMPLE_RATE, cfg.sample_rate);
+
+
         ESP_LOGI(TAG, "BHi360 #%d ready, polling for rotation vecotr", sensorNumber); //debug
         
     } //end sensor init loop
@@ -270,6 +282,7 @@ static void setupAll(){
     setupResetPin();
     setupI2CBus();
     setupBHI360Devices();
+    ESP_LOGI("TAG", "Tick rate: %d Hz, period: %lu ms", configTICK_RATE_HZ, portTICK_PERIOD_MS);
 }
 
 /*
@@ -355,26 +368,38 @@ static void print_quats_csv(void){
  ********************************************************/
 void pollSensors_Task(void *pvParameters) { //Test to include time
     setupAll();
-    int64_t startTime;
+    int64_t t0, t1, t2, t3, t4; //DEBUG except t3 and t0 lol we need those
+    int32_t workTime = 0;
     while(1){
-        startTime = esp_timer_get_time();
-        //int64_t t0 = esp_timer_get_time();
-        while ((esp_timer_get_time()-startTime) <= DELAY_PERIOD){
-            pollSensors();
-            //int64_t t1 = esp_timer_get_time();
-            orientAllFingers();
-            //int64_t t2 = esp_timer_get_time();
-            print_quats_csv();
-            //int64_t t3 = esp_timer_get_time();
-            //ESP_LOGI("TIMING", "poll=%lldus, orient = %lldus, print=%lldus", t1-t0, t2-t1, t3-t2);
-        }
+        t0 = esp_timer_get_time();
+        pollSensors(); //Get new data from the sensors, 3-8ms, depending on external factors (consistent 3-5 without scheduler, 8 with)
+        t1 = esp_timer_get_time();
+        orientAllFingers(); //Orient all quaternions to the wrist, 0.02ms
+        t2 = esp_timer_get_time();
+        print_quats_csv(); //Output sensor data over serial (remove in final product?), 0.5ms
+        t3 = esp_timer_get_time();
+        
+
+        workTime = (t3-t0)/1000; //in ms
+        if(workTime < DELAY_PERIOD)   {   vTaskDelay(pdMS_TO_TICKS(DELAY_PERIOD - workTime)); }
+        t4 = esp_timer_get_time();
+        ESP_LOGI("TIMING", "poll=%lldus, orient = %lldus, print=%lldus, delay=%lldms, workTime =%ldms, intended delay = %ldms", t1-t0, t2-t1, t3-t2, t4-t3, workTime, (int32_t)(DELAY_PERIOD - workTime));
+        
     }
 }
+
 /****************************************************
- * Basic Task structure without Core pinning.
- * Testing for Familiarity.
+ * This is the machine learning task
  ****************************************************/
-void app_main(void) {
+void classifyGesture_Task(void *pvParameters){
+
+}
+
+
+/****************************************************
+ * Basically a setup function to initialize all the tasks
+ ****************************************************/
+extern "C" void app_main(void) {
     xTaskCreate(
         pollSensors_Task,           //Task Function
         "Sensor Data Collection",   //Debugging Task Name
