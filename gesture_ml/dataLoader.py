@@ -28,7 +28,7 @@ from sklearn.preprocessing import LabelEncoder
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-TIMESTEPS    = 300      # rows per recording — must match parse_gesture_csv.py TARGET_TIMESTEPS
+TIMESTEPS    = 10      # rows per recording — must match parse_gesture_csv.py TARGET_TIMESTEPS
 NUM_IMUS     = 6
 VALS_PER_IMU = 4        # w, x, y, z
 FEATURES     = NUM_IMUS * VALS_PER_IMU   # 24
