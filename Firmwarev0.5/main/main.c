@@ -9,11 +9,7 @@
 #include "stdint.h"
 #include "math.h"
 #include "driver/gpio.h"
-//Machine learning stuff
-#include "gestureModelData.h"
-#include "tensorflow/lite/micro/micro_interpreter.h"
-#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+
 //#include "tensorflow/lite/version.h"
 
 //These are the virtual sensor settings: (Page 103-104 of datasheet)
@@ -395,11 +391,13 @@ void classifyGesture_Task(void *pvParameters){
 
 }
 
-
+#ifdef __cplusplus //If we are trying to run this in C++, which we do need to for tflite
+extern "C" {
+#endif
 /****************************************************
  * Basically a setup function to initialize all the tasks
  ****************************************************/
-extern "C" void app_main(void) {
+void app_main(void) {
     xTaskCreate(
         pollSensors_Task,           //Task Function
         "Sensor Data Collection",   //Debugging Task Name
@@ -409,3 +407,6 @@ extern "C" void app_main(void) {
         NULL                        //Task Handle (Optional)
     );
 }
+#ifdef __cplusplus
+}
+#endif
