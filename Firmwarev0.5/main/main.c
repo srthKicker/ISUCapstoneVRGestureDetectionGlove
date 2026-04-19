@@ -364,22 +364,23 @@ static void print_quats_csv(void){
  ********************************************************/
 void pollSensors_Task(void *pvParameters) { //Test to include time
     setupAll();
-    int64_t t0, t1, t2, t3, t4; //DEBUG except t3 and t0 lol we need those
+    int64_t t0, t3;
+    //int64_t t1, t2, t4; //DEBUG except t3 and t0 lol we need those
     int32_t workTime = 0;
     while(1){
         t0 = esp_timer_get_time();
         pollSensors(); //Get new data from the sensors, 3-8ms, depending on external factors (consistent 3-5 without scheduler, 8 with)
-        t1 = esp_timer_get_time();
+        //t1 = esp_timer_get_time();
         orientAllFingers(); //Orient all quaternions to the wrist, 0.02ms
-        t2 = esp_timer_get_time();
+        //t2 = esp_timer_get_time();
         print_quats_csv(); //Output sensor data over serial (remove in final product?), 0.5ms
         t3 = esp_timer_get_time();
         
 
         workTime = (t3-t0)/1000; //in ms
         if(workTime < DELAY_PERIOD)   {   vTaskDelay(pdMS_TO_TICKS(DELAY_PERIOD - workTime)); }
-        t4 = esp_timer_get_time();
-        ESP_LOGI("TIMING", "poll=%lldus, orient = %lldus, print=%lldus, delay=%lldms, workTime =%ldms, intended delay = %ldms", t1-t0, t2-t1, t3-t2, t4-t3, workTime, (int32_t)(DELAY_PERIOD - workTime));
+        //t4 = esp_timer_get_time();
+        //ESP_LOGI("TIMING", "poll=%lldus, orient = %lldus, print=%lldus, delay=%lldms, workTime =%ldms, intended delay = %ldms", t1-t0, t2-t1, t3-t2, t4-t3, workTime, (int32_t)(DELAY_PERIOD - workTime));
         
     }
 }
