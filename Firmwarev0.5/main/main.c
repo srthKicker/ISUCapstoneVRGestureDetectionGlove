@@ -94,7 +94,7 @@ static float quat[NUMBER_OF_SENSORS][4]; //Current quaternion we have read from 
 //static int16_t quat[NUMBER_OF_SENSORS][BUFFER_LENGTH][4]; //DATA COLLECTION CHANGE TEMPORARY, uses ints to speed up things
 //static int16_t bufferWriteIndex = 0; //Stores what part of buffer we are storing to, starts at 0, goes to Buffer_Length at max 
 
-static int16_t printableQuat[NUMBER_OF_SENSORS][4]; //Used to store oriented quaternions in int16 format before printing
+int16_t printableQuat[NUMBER_OF_SENSORS][4]; //Used to store oriented quaternions in int16 format before printing
 
 //static Quat quats[NUMBER_OF_SENSORS]; //Working on changing to quaternion datatype
 
@@ -363,7 +363,10 @@ static void print_quats_csv(void){
  * (Originally app_main)
  ********************************************************/
 void pollSensors_Task(void *pvParameters) { //Test to include time
+    int64_t startTime = esp_timer_get_time();
     setupAll();
+    int64_t endSetupTime = esp_timer_get_time();
+    ESP_LOGI("TIMING", "Time to set up = %lld", startTime-endSetupTime);
     int64_t t0, t3;
     //int64_t t1, t2, t4; //DEBUG except t3 and t0 lol we need those
     int32_t workTime = 0;
@@ -373,7 +376,7 @@ void pollSensors_Task(void *pvParameters) { //Test to include time
         //t1 = esp_timer_get_time();
         orientAllFingers(); //Orient all quaternions to the wrist, 0.02ms
         //t2 = esp_timer_get_time();
-        print_quats_csv(); //Output sensor data over serial (remove in final product?), 0.5ms
+        //print_quats_csv(); //Output sensor data over serial (remove in final product?), 0.5ms
         t3 = esp_timer_get_time();
         
 
@@ -386,28 +389,32 @@ void pollSensors_Task(void *pvParameters) { //Test to include time
 }
 
 /****************************************************
- * This is the machine learning task
+ * This is the machine learning task, defined in gestureTask.cpp
  ****************************************************/
-void classifyGesture_Task(void *pvParameters){
+extern void classifyGesture_Task(void *pvParameters);
 
-}
-
-#ifdef __cplusplus //If we are trying to run this in C++, which we do need to for tflite
-extern "C" {
-#endif
 /****************************************************
  * Basically a setup function to initialize all the tasks
  ****************************************************/
 void app_main(void) {
-    xTaskCreate(
+    xTaskCreatePinnedToCore(
         pollSensors_Task,           //Task Function
         "Sensor Data Collection",   //Debugging Task Name
         8192,                       //Stack Size in Bytes
         NULL,                       //Task Parameters
         5,                          //Task Priority
-        NULL                        //Task Handle (Optional)
+        NULL,                        //Task Handle (Optional)
+        0
+    );
+
+    vTaskDelay(pdMS_TO_TICKS(25000)); //Delay until we actually start getting results from sensors
+    xTaskCreatePinnedToCore(
+        classifyGesture_Task,
+        "Gesture Classification",
+        8192,
+        NULL,
+        5,
+        NULL,
+        1
     );
 }
-#ifdef __cplusplus
-}
-#endif
