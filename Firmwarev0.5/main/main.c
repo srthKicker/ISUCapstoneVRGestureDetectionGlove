@@ -4,7 +4,8 @@
 #include "esp_timer.h"
 #include "driver/i2c_master.h"
 #include "bhi3.h"
-#include "Bosch_Shuttle3_BHI360.fw.h"
+#include "Bosch_Shuttle3_BHI360.fw.h" // Works with Game vector, not with magnetometer
+//#include "Bosch_Shuttle3_BHI360_BMM350C_HeadOrientation.fw.h" //Works with magnetometer, needs new model
 #include "bhi360_i2c.h"
 #include "stdint.h"
 #include "math.h"
@@ -19,6 +20,7 @@
 
 #define BHI360_SENSORID_RV 34 //Rotation vector setting 
 #define BHI360_SENSORID_GV 37 // Currently Using game vector in case no magnetometer is on board
+#define BHI360_SENSORID_GRV 40 //geomagnetic rotation vector
 #define QUAT_SCALING_FACTOR 16384.0f
 
 #define BHI360_VIRTUAL_SENSOR_ID BHI360_SENSORID_GV //Change to change virtual sensor value
@@ -360,9 +362,8 @@ static void print_quats_csv(void){
  * This is Seth's code that polls the IMUs
  * to print their output as Euler vectors
  * converted to a FreeRTOS task function.
- * (Originally app_main)
  ********************************************************/
-void pollSensors_Task(void *pvParameters) { //Test to include time
+void pollSensors_Task(void *pvParameters) { //Uncomment debug options for timing data
     int64_t startTime = esp_timer_get_time();
     setupAll();
     int64_t endSetupTime = esp_timer_get_time();
@@ -373,17 +374,17 @@ void pollSensors_Task(void *pvParameters) { //Test to include time
     while(1){
         t0 = esp_timer_get_time();
         pollSensors(); //Get new data from the sensors, 3-8ms, depending on external factors (consistent 3-5 without scheduler, 8 with)
-        //t1 = esp_timer_get_time();
+        //t1 = esp_timer_get_time(); //DEBUG
         orientAllFingers(); //Orient all quaternions to the wrist, 0.02ms
-        //t2 = esp_timer_get_time();
+        //t2 = esp_timer_get_time(); //DEBUG
         //print_quats_csv(); //Output sensor data over serial (remove in final product?), 0.5ms
         t3 = esp_timer_get_time();
         
 
         workTime = (t3-t0)/1000; //in ms
         if(workTime < DELAY_PERIOD)   {   vTaskDelay(pdMS_TO_TICKS(DELAY_PERIOD - workTime)); }
-        //t4 = esp_timer_get_time();
-        //ESP_LOGI("TIMING", "poll=%lldus, orient = %lldus, print=%lldus, delay=%lldms, workTime =%ldms, intended delay = %ldms", t1-t0, t2-t1, t3-t2, t4-t3, workTime, (int32_t)(DELAY_PERIOD - workTime));
+        //t4 = esp_timer_get_time(); //DEBUG
+        //ESP_LOGI("TIMING", "poll=%lldus, orient = %lldus, print=%lldus, delay=%lldms, workTime =%ldms, intended delay = %ldms", t1-t0, t2-t1, t3-t2, t4-t3, workTime, (int32_t)(DELAY_PERIOD - workTime)); //DEBUG
         
     }
 }

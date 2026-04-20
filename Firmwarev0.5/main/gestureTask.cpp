@@ -1,5 +1,3 @@
-// gestureTask.cpp
-
 #include <cstring>
 #include <cstdint>
 #include <cmath>
@@ -27,14 +25,14 @@ static const char *TAG = "GestureTask";
 // --- Model / input config CHANGE TO MATCH TRAINING IF YOU CHANGE IT
 constexpr int kWindowSize   = 10; //Number of Frames
 constexpr int kNumImus      = NUMBER_OF_SENSORS; //
-constexpr int kFeatures     = kNumImus * 4;   // 24
-constexpr int kNumClasses   = 5;              // base, gesture1..4
-constexpr int kTensorArenaSize = 20 * 1024;   // tune if needed
+constexpr int kFeatures     = kNumImus * 4;   // 24 int8 values from the 6 quaternions
+constexpr int kNumClasses   = 5;              // base, gesture1..4 Hand flat, 4 fingers up, OK sign, fist, thumb up/sideways
+constexpr int kTensorArenaSize = 20 * 1024;   // idk what this does lol
 
 // Confidence threshold (0.0–1.0)
-static float s_min_confidence = 0.55f; // How low we will still accept 
+static float s_min_confidence = 0.90f; // How low we will still accept gestures to be
 
-// QUAT scaling (matches Python)
+// QUAT scaling to change them all from int16_t to float
 constexpr float kQuatScalingFactor = 16384.0f;
 
 // Sampling / task timing
