@@ -13,6 +13,13 @@
 
 //#include "tensorflow/lite/version.h"
 
+//NimBLE header Files
+#include "nimble/nimble_port.h"
+#include "nimble/nimble_port_freertos.h"
+#include "host/ble_hs.h"
+#include "services/gap/ble_svc_gap.h"
+#include "services/gatt/ble_svc_gatt.h"
+
 //These are the virtual sensor settings: (Page 103-104 of datasheet)
 //Rotation vector REQUIRES magnetometer BMM150/350, but has accuracy field
 //Game rotation vector does not have accuracy field (zeroed out but still sent) does not need magnetometer
@@ -394,6 +401,12 @@ void pollSensors_Task(void *pvParameters) { //Uncomment debug options for timing
  ****************************************************/
 extern void classifyGesture_Task(void *pvParameters);
 
+/*****************************************************
+ * This is the BLE task to advertise the detected gesture.
+ * defined in bleTask.cpp
+ ***************************************************/
+extern void bleOut_Task(void *pvParameters);
+
 /****************************************************
  * Basically a setup function to initialize all the tasks
  ****************************************************/
@@ -413,6 +426,16 @@ void app_main(void) {
         classifyGesture_Task,
         "Gesture Classification",
         8192,
+        NULL,
+        5,
+        NULL,
+        1
+    );
+
+    xTaskCreatePinnedToCore(
+        bleOut_Task,
+        "BLE Output",
+        16384,
         NULL,
         5,
         NULL,
