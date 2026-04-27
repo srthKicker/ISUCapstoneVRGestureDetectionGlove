@@ -71,6 +71,15 @@ extern "C" {
     extern int16_t printableQuat[NUMBER_OF_SENSORS][4];
 }
 
+// BLE output source
+// From bleTask.cpp
+// For use in the gesture classification task to broadcast predicted gesture
+extern void ble_send_gesture(const char *gesture_msg);
+
+// Gesture msg to sent to BLE output
+static char msg[64];
+
+
 // --------------------------------------------------
 //  TFLite Micro initialization
 // --------------------------------------------------
@@ -216,7 +225,8 @@ static bool RunInference(const char *&out_label, float &out_confidence)
 }
 
 // --------------------------------------------------
-//  Implementation fo the
+//  Implementation for gesture classification
+//  Includes serial output and message packaging for BLE output
 // --------------------------------------------------
 extern "C" void classifyGesture_Task(void *pvParameters)
 {
@@ -238,13 +248,27 @@ extern "C" void classifyGesture_Task(void *pvParameters)
             float confidence  = 0.0f;
 
             if (RunInference(label, confidence)) {
+                // OLD Serial Output
+                // if (confidence < s_min_confidence) {
+                //     printf("Gesture: %-10s  (raw: %s @ %.1f%%)\n",
+                //            "uncertain", label, confidence * 100.0f);
+                // } else {
+                //     printf("Gesture: %-10s  Confidence: %.1f%%\n",
+                //            label, confidence * 100.0f);
+                //     ble_send_gesture(label, confidence);
+                // }
                 if (confidence < s_min_confidence) {
-                    printf("Gesture: %-10s  (raw: %s @ %.1f%%)\n",
+                    snprintf(msg, sizeof(msg),
+                            "Gesture: %-10s  (raw: %s @ %.1f%%)\n",
                            "uncertain", label, confidence * 100.0f);
+                    printf("%s", msg);
                 } else {
-                    printf("Gesture: %-10s  Confidence: %.1f%%\n",
+                    snprintf(msg, sizeof(msg),
+                            "Gesture: %-10s  Confidence: %.1f%%\n",
                            label, confidence * 100.0f);
+                    printf("%s", msg);
                 }
+                ble_send_gesture(msg);
                 fflush(stdout);
             }
         }

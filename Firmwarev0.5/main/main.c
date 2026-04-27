@@ -12,8 +12,7 @@
 #include "driver/gpio.h"
 
 //#include "tensorflow/lite/version.h"
-
-//NimBLE header Files
+#include "nvs_flash.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
@@ -402,15 +401,18 @@ void pollSensors_Task(void *pvParameters) { //Uncomment debug options for timing
 extern void classifyGesture_Task(void *pvParameters);
 
 /*****************************************************
- * This is the BLE task to advertise the detected gesture.
+ * This is the BLE task to advertise the detected gesture
+ * with the NimBLE library.
  * defined in bleTask.cpp
  ***************************************************/
 extern void bleOut_Task(void *pvParameters);
+
 
 /****************************************************
  * Basically a setup function to initialize all the tasks
  ****************************************************/
 void app_main(void) {
+
     xTaskCreatePinnedToCore(
         pollSensors_Task,           //Task Function
         "Sensor Data Collection",   //Debugging Task Name
@@ -435,7 +437,7 @@ void app_main(void) {
     xTaskCreatePinnedToCore(
         bleOut_Task,
         "BLE Output",
-        16384,
+        16384,              //This is likely overkill (likely only needs 4-8KB) I will test this later
         NULL,
         5,
         NULL,

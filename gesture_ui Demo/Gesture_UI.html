@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32 Gesture Viewer</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --good: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --border: #334155;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 1000px;
+      background: rgba(17, 24, 39, 0.95);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    }
+
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.8rem;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      margin-top: 6px;
+      font-size: 0.95rem;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 0.95rem;
+      font-weight: bold;
+      cursor: pointer;
+      background: var(--accent);
+      color: #001018;
+    }
+
+    button.secondary {
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+    }
+
+    .card {
+      background: #0b1220;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+    }
+
+    .image-wrap {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #030712;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+    }
+
+    .image-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      background: #000;
+    }
+
+    .gesture-name {
+      margin-top: 16px;
+      font-size: 1.4rem;
+      font-weight: bold;
+    }
+
+    .probability {
+      margin-top: 10px;
+      font-size: 1.2rem;
+    }
+
+    .probability-value {
+      font-weight: bold;
+    }
+
+    .bar-container {
+      margin-top: 14px;
+      width: 100%;
+      height: 18px;
+      background: #111827;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      width: 0%;
+      transition: width 0.2s ease;
+      background: var(--good);
+    }
+
+    .status {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .small-title {
+      margin: 0 0 12px 0;
+      font-size: 1rem;
+    }
+
+    .mapping-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px 12px;
+      align-items: center;
+    }
+
+    .mapping-grid label {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .mapping-grid input {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0f172a;
+      color: var(--text);
+      padding: 10px;
+      font-size: 0.92rem;
+    }
+
+    .example {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    .log {
+      margin-top: 14px;
+      background: #020617;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      min-height: 120px;
+      max-height: 240px;
+      overflow: auto;
+      padding: 10px;
+      font-family: Consolas, monospace;
+      font-size: 0.88rem;
+      white-space: pre-wrap;
+    }
+
+    .note {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    @media (max-width: 860px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div>
+        <h1>ESP32 Gesture Viewer</h1>
+        <div class="subtitle">Reads serial text from your ESP32 and displays the matching gesture image and probability.</div>
+      </div>
+      <div class="button-row">
+        <button id="connectBtn">Connect Serial</button>
+        <button id="BLEconnectBtn">Connect BLE</button>
+        <button id="disconnectBtn" class="secondary" disabled>Disconnect</button>
+        <button id="demoBtn" class="secondary">Run Demo</button>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="card">
+        <div class="image-wrap">
+          <img id="gestureImage" src="gesture1.png" alt="Gesture display" />
+        </div>
+        <div class="gesture-name" id="gestureName">Waiting for data...</div>
+        <div class="probability">Probability: <span class="probability-value" id="probabilityText">0%</span></div>
+        <div class="bar-container">
+          <div class="bar-fill" id="probabilityBar"></div>
+        </div>
+        <div class="status" id="statusText">Status: Not connected</div>
+      </div>
+
+      <div class="card">
+        <h2 class="small-title">Image file mapping</h2>
+        <div class="mapping-grid">
+          <label for="g1">Gesture 1</label>
+          <input id="g1" type="text" value="gesture1.png" />
+
+          <label for="g2">Gesture 2</label>
+          <input id="g2" type="text" value="gesture2.png" />
+
+          <label for="g3">Gesture 3</label>
+          <input id="g3" type="text" value="gesture3.png" />
+
+          <label for="g4">Gesture 4</label>
+          <input id="g4" type="text" value="gesture4.png" />
+
+          <label for="g5">Base</label>
+          <input id="g5" type="text" value="Base.png" />
+        </div>
+
+        <div class="example">
+          Expected incoming serial line examples:<br>
+          <strong>gesture 1 probability 90%</strong><br>
+          <strong>gesture 3 probability 42%</strong><br><br>
+          The parser is forgiving and will also work with lines like:<br>
+          <strong>Gesture 4 Probability: 77%</strong>
+        </div>
+
+        <div class="note">
+          Put your image files in the same folder as this HTML file, or change the filenames above to match your actual image names.
+        </div>
+
+        <div class="log" id="serialLog">Serial log will appear here...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================
+    // DOM REFERENCES
+    // ============================================================
+    const connectBtn = document.getElementById('connectBtn');
+    const disconnectBtn = document.getElementById('disconnectBtn');
+    const demoBtn = document.getElementById('demoBtn');
+
+    const gestureImage = document.getElementById('gestureImage');
+    const gestureName = document.getElementById('gestureName');
+    const probabilityText = document.getElementById('probabilityText');
+    const probabilityBar = document.getElementById('probabilityBar');
+    const statusText = document.getElementById('statusText');
+    const serialLog = document.getElementById('serialLog');
+
+    const g1 = document.getElementById('g1');
+    const g2 = document.getElementById('g2');
+    const g3 = document.getElementById('g3');
+    const g4 = document.getElementById('g4');
+    const g5 = document.getElementById('g5');
+
+    // ============================================================
+    // SERIAL VARIABLES
+    // ============================================================
+    let port = null;
+    let reader = null;
+    let inputDone = null;
+    let inputStream = null;
+    let keepReading = false;
+
+    // ============================================================
+    // BLE VARIABLES
+    // ============================================================
+    let bleDevice = null;
+    let bleServer = null;
+    let bleCharacteristic = null;
+    let activeConnection = null; // 'serial' or 'ble'
+
+    // ============================================================
+    // IMAGE LOOKUP FUNCTION
+    // This reads whatever filenames the user typed into the boxes.
+    // ============================================================
+    function getGestureImageMap() {
+      return {
+        1: g1.value.trim(),
+        2: g2.value.trim(),
+        3: g3.value.trim(),
+        4: g4.value.trim(),
+        5: g5.value.trim()
+      };
+    }
+
+    // ============================================================
+    // APPEND TEXT TO THE SERIAL LOG WINDOW
+    // ============================================================
+    function addLog(message) {
+      const now = new Date().toLocaleTimeString();
+      serialLog.textContent += `\n[${now}] ${message}`;
+      serialLog.scrollTop = serialLog.scrollHeight;
+    }
+
+    // ============================================================
+    // UPDATE THE MAIN DISPLAY BASED ON GESTURE NUMBER + PROBABILITY
+    // ============================================================
+    function updateDisplay(gestureNumber, probabilityValue) {
+      const imageMap = getGestureImageMap();
+      const imagePath = imageMap[gestureNumber];
+
+      //gestureName.textContent = `Gesture ${gestureNumber}`;
+
+      // Special case for Base gesture display else display other gestures
+      const displayName = (gestureNumber === 5) ? "base" : `Gesture ${gestureNumber}`;
+      gestureName.textContent = displayName;
+      probabilityText.textContent = `${probabilityValue}%`;
+      probabilityBar.style.width = `${probabilityValue}%`;
+
+      if (probabilityValue >= 80) {
+        probabilityBar.style.background = 'var(--good)';
+      } else if (probabilityValue >= 50) {
+        probabilityBar.style.background = 'var(--warn)';
+      } else {
+        probabilityBar.style.background = 'var(--bad)';
+      }
+
+      if (imagePath) {
+        gestureImage.src = imagePath;
+        gestureImage.alt = `Gesture ${gestureNumber}`;
+      }
+    }
+
+    // ============================================================
+    // PARSE A SERIAL LINE
+    // Goal: handle strings like:
+    // "gesture 1 probability 90%"
+    // "Gesture 2 Probability: 77%"
+    // ============================================================
+    function parseGestureLine(line) {
+      const cleaned = line.trim();
+      if (!cleaned) return null;
+
+      // This regex looks for the word gesture, then a gesture number,
+      // then the word confidence, then a numeric percentage.
+      //const regex = /gesture\s*(\d)\s*.*?(confidence)\s*:?\s*([0-9]+(?:\.[0-9]+)?)\s*%/i;
+
+      // Accept:
+      // gesture 1
+      // gesture: 3
+      // gesture base
+      // gesture: base
+      const regex = /gesture\s*:?\s*(\d|base)\s*.*?confidence\s*:?\s*([0-9]+(?:\.[0-9]+)?)\s*%/i;
+
+      const match = cleaned.match(regex);
+
+      if (!match) {
+        return null;
+      }
+
+      let gestureToken = match[1].toLowerCase();
+      
+
+      // Convert "base" → 5
+      let gestureNumber = (gestureToken === "base") ? 5 : parseInt(gestureToken, 10);
+      let probabilityValue = parseFloat(match[2]);
+
+      // Clamp probability into the valid range 0 to 100.
+      if (probabilityValue < 0) probabilityValue = 0;
+      if (probabilityValue > 100) probabilityValue = 100;
+
+      // Only accept gesture numbers 1 through 5.
+      if (gestureNumber < 1 || gestureNumber > 5) {
+        return null;
+      }
+
+      return {
+        gestureNumber,
+        probabilityValue
+      };
+    }
+
+    // ============================================================
+    // TRANSFORM STREAM OF SERIAL DATA INTO WHOLE LINES
+    // Web Serial data may arrive in chunks, so we assemble full lines.
+    // ============================================================
+    class LineBreakTransformer {
+      constructor() {
+        this.container = '';
+      }
+
+      transform(chunk, controller) {
+        this.container += chunk;
+        const lines = this.container.split(/\r?\n/);
+        this.container = lines.pop();
+        lines.forEach(line => controller.enqueue(line));
+      }
+
+      flush(controller) {
+        controller.enqueue(this.container);
+      }
+    }
+
+    // ============================================================
+    // CONNECT TO THE ESP32 USING WEB SERIAL
+    // ============================================================
+    async function connectSerial() {
+      if (!('serial' in navigator)) {
+        alert('Web Serial API is not supported in this browser. Use Google Chrome or Microsoft Edge.');
+        return;
+      }
+
+      try {
+        port = await navigator.serial.requestPort();
+
+        // Set the baud rate to match your ESP32 Serial.begin(...) call.
+        // Change this value if your ESP32 uses a different baud rate.
+        await port.open({ baudRate: 115200 });
+
+        keepReading = true;
+        statusText.textContent = 'Status: Connected to serial port';
+        addLog('Connected to serial port at 115200 baud.');
+
+        activeConnection ='serial';
+
+        connectBtn.disabled = true;
+        BLEconnectBtn.disabled = true;   // disable BLE connect
+        disconnectBtn.disabled = false;
+
+        const decoder = new TextDecoderStream();
+        inputDone = port.readable.pipeTo(decoder.writable);
+        inputStream = decoder.readable.pipeThrough(new TransformStream(new LineBreakTransformer()));
+        reader = inputStream.getReader();
+
+        readLoop();
+      } catch (error) {
+        statusText.textContent = 'Status: Connection failed';
+        addLog(`Connection error: ${error.message}`);
+      }
+    }
+
+    // ============================================================
+    // Let the UI know how to handle BLE notifications
+    // ============================================================
+    function handleBleNotification(event) {
+      const value = new TextDecoder().decode(event.target.value);
+
+      addLog(value); // optional, but useful
+
+     const parsed = parseGestureLine(value);
+      if (parsed) {
+       updateDisplay(parsed.gestureNumber, parsed.probabilityValue);
+       statusText.textContent =
+         `Status: Showing Gesture ${parsed.gestureNumber} at ${parsed.probabilityValue}%`;
+      }
+    }
+
+
+  // ============================================================
+  // CONNECT TO THE ESP32 USING WEB BLUETOOTH
+  // ============================================================
+  async function connectBLE() {
+    try {
+
+      bleDevice= await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: ['b849237c-ee69-f79e-b247-39849875b4c1']
+    });
+      //Filtering to play with, currently stops the device from being visible
+      //   bleDevice= await navigator.bluetooth.requestDevice({
+      //   filters: [
+      //     { services: ['b849237c-ee69-f79e-b247-39849875b4c1']
+      //   ],
+      // });
+
+
+      bleServer = await bleDevice.gatt.connect();
+      const service = await bleServer.getPrimaryService('b849237c-ee69-f79e-b247-39849875b4c1');
+      bleCharacteristic = await service.getCharacteristic('0e639925-5c3f-e081-d349-6c061aba1623');
+
+
+      await bleCharacteristic.startNotifications();
+      bleCharacteristic.addEventListener('characteristicvaluechanged', handleBleNotification);
+
+      activeConnection = 'ble';
+      statusText.textContent = 'Status: Connected via BLE';
+
+      connectBtn.disabled = true;      // disable Serial connect
+      BLEconnectBtn.disabled = true;   // disable BLE connect
+      disconnectBtn.disabled = false;
+
+    } catch (err) {
+      addLog('BLE connection failed: ' + err);
+    }
+}
+
+
+    // ============================================================
+    // CONTINUOUSLY READ SERIAL LINES
+    // ============================================================
+    async function readLoop() {
+      try {
+        while (keepReading && reader) {
+          const { value, done } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          if (value) {
+            addLog(value);
+
+            const parsed = parseGestureLine(value);
+            if (parsed) {
+              updateDisplay(parsed.gestureNumber, parsed.probabilityValue);
+              statusText.textContent = `Status: Showing Gesture ${parsed.gestureNumber} at ${parsed.probabilityValue}% probability`;
+            }
+          }
+        }
+      } catch (error) {
+        addLog(`Read error: ${error.message}`);
+        statusText.textContent = 'Status: Serial read error';
+      }
+    }
+
+    // ============================================================
+    // DISCONNECT CLEANLY FROM THE SERIAL DEVICE
+    // ============================================================
+    async function disconnectSerial() {
+      keepReading = false;
+
+      try {
+        if (reader) {
+          await reader.cancel();
+          reader.releaseLock();
+          reader = null;
+        }
+
+        if (inputDone) {
+          try {
+            await inputDone;
+          } catch (e) {
+            // It is normal for inputDone to reject when reader.cancel() happens.
+          }
+          inputDone = null;
+        }
+
+        if (port) {
+          await port.close();
+          port = null;
+        }
+
+        statusText.textContent = 'Status: Disconnected';
+        addLog('Disconnected from serial port.');
+        activeConnection = null;
+        connectBtn.disabled = false;
+        BLEconnectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+      } catch (error) {
+        addLog(`Disconnect error: ${error.message}`);
+      }
+    }
+
+    
+    // ============================================================
+    // DISCONNECT CLEANLY FROM THE BLE DEVICE
+    // ============================================================
+    async function disconnectBLE() {
+  try {
+    if (bleCharacteristic) {
+      await bleCharacteristic.stopNotifications();
+      bleCharacteristic.removeEventListener('characteristicvaluechanged', handleBleNotification);
+    }
+
+    if (bleDevice && bleDevice.gatt.connected) {
+      bleDevice.gatt.disconnect();
+    }
+
+    bleDevice = null;
+    bleServer = null;
+    bleCharacteristic = null;
+
+    statusText.textContent = 'Status: BLE Disconnected';
+    connectBtn.disabled = false;
+    BLEconnectBtn.disabled = false;
+    disconnectBtn.disabled = true;
+
+    addLog('Disconnected from BLE device.');
+  } catch (err) {
+    addLog('BLE disconnect error: ' + err);
+  }
+}
+
+
+    // ============================================================
+    // DEMO MODE
+    // Lets you test the UI without the ESP32 connected.
+    // ============================================================
+    let demoIndex = 0;
+    const demoLines = [
+      'gesture 1 probability 90%',
+      'gesture 2 probability 67%',
+      'gesture 4 probability 45%',
+      'Base probability 82%',
+      'gesture 3 probability 58%'
+    ];
+
+    function runDemo() {
+      const line = demoLines[demoIndex];
+      demoIndex = (demoIndex + 1) % demoLines.length;
+
+      addLog(`[DEMO] ${line}`);
+      const parsed = parseGestureLine(line);
+      if (parsed) {
+        updateDisplay(parsed.gestureNumber, parsed.probabilityValue);
+        statusText.textContent = `Status: Demo showing Gesture ${parsed.gestureNumber} at ${parsed.probabilityValue}% probability`;
+      }
+    }
+
+    // ============================================================
+    // BUTTON EVENTS
+    // ============================================================
+    connectBtn.addEventListener('click', connectSerial);
+    BLEconnectBtn.addEventListener('click', connectBLE);
+    //disconnectBtn.addEventListener('click', disconnectSerial);
+    disconnectBtn.addEventListener('click', () => {
+      if (activeConnection === 'serial') {
+        disconnectSerial();
+      } else if (activeConnection === 'ble') {
+     disconnectBLE();
+    }
+    activeConnection = null;
+    });
+
+    demoBtn.addEventListener('click', runDemo);
+
+    // ============================================================
+    // INITIAL LOG MESSAGE
+    // ============================================================
+    serialLog.textContent = 'Serial log will appear here...\nOpen this file in Chrome or Edge, click Connect Serial, and choose your ESP32 COM port.';
+  </script>
+</body>
+</html>
