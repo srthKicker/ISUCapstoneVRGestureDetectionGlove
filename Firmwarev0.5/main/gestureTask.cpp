@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #include "gestureModelData.h"
 
@@ -36,7 +37,7 @@ static float s_min_confidence = 0.90f; // How low we will still accept gestures 
 constexpr float kQuatScalingFactor = 16384.0f;
 
 // Sampling / task timing
-constexpr TickType_t kGestureTaskPeriodTicks = pdMS_TO_TICKS(100);
+constexpr TickType_t kGestureTaskPeriodTicks = pdMS_TO_TICKS(6);
 
 // Tensor arena
 alignas(16) static uint8_t tensor_arena[kTensorArenaSize];
@@ -191,11 +192,14 @@ static bool RunInference(const char *&out_label, float &out_confidence)
             input_data[idx++] = static_cast<int8_t>(q);
         }
     }
-
+    int64_t t_invoke_start = esp_timer_get_time(); //Time actual inference
     if (g_interpreter->Invoke() != kTfLiteOk) {
         ESP_LOGE(TAG, "Invoke failed");
         return false;
     }
+
+    int64_t t_invoke_end = esp_timer_get_time();
+    //ESP_LOGI(TAG, "Invoke time: %lld us", (t_invoke_end - t_invoke_start));
 
     // Dequantize output and find argmax
     if (g_output->type != kTfLiteInt8) {
@@ -243,11 +247,13 @@ extern "C" void classifyGesture_Task(void *pvParameters)
         PushFrameFromPrintableQuat();
 
         // 2) Run inference when window is full
-        if (WindowIsFull()) {
+        //if (WindowIsFull()) {
             const char *label = nullptr;
             float confidence  = 0.0f;
-
+            int64_t t_start = esp_timer_get_time();       // <-- START
             if (RunInference(label, confidence)) {
+                int64_t t_end = esp_timer_get_time();
+                //ESP_LOGI(TAG, "Inference latency: %lld us", (t_end - t_start));
                 // OLD Serial Output
                 // if (confidence < s_min_confidence) {
                 //     printf("Gesture: %-10s  (raw: %s @ %.1f%%)\n",
@@ -271,8 +277,8 @@ extern "C" void classifyGesture_Task(void *pvParameters)
                 ble_send_gesture(msg);
                 fflush(stdout);
             }
-        }
+        //}
 
-        vTaskDelay(kGestureTaskPeriodTicks);  // ~100 ms
+        vTaskDelay(kGestureTaskPeriodTicks);  // ~100 ms (6 right now for testing)
     }
 }

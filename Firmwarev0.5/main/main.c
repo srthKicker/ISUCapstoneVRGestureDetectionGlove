@@ -389,8 +389,8 @@ void pollSensors_Task(void *pvParameters) { //Uncomment debug options for timing
 
         workTime = (t3-t0)/1000; //in ms
         if(workTime < DELAY_PERIOD)   {   vTaskDelay(pdMS_TO_TICKS(DELAY_PERIOD - workTime)); }
-        //t4 = esp_timer_get_time(); //DEBUG
-        //ESP_LOGI("TIMING", "poll=%lldus, orient = %lldus, print=%lldus, delay=%lldms, workTime =%ldms, intended delay = %ldms", t1-t0, t2-t1, t3-t2, t4-t3, workTime, (int32_t)(DELAY_PERIOD - workTime)); //DEBUG
+        // t4 = esp_timer_get_time(); //DEBUG
+        // ESP_LOGI("TIMING", "poll=%lldus, orient = %lldus, print=%lldus, delay=%lldms, workTime =%ldms, intended delay = %ldms", t1-t0, t2-t1, t3-t2, t4-t3, workTime, (int32_t)(DELAY_PERIOD - workTime)); //DEBUG
         
     }
 }
