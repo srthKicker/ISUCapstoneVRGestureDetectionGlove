@@ -20,7 +20,6 @@ void bhi360_delay_us(uint32_t period, void *intf_ptr);
 
 
 //Context struct to be passed to each bhi360_i2c function. 
-//Will 
 typedef struct i2cContext {
     i2c_master_dev_handle_t devHandle;
     i2c_master_dev_handle_t muxDevHandle;

@@ -65,9 +65,7 @@ static const char *kClassNames[kNumClasses] = {
 };
 
 // --- Sensor data source ---
-// From main.c (or wherever you define it):
-// int16_t printableQuat[NUMBER_OF_SENSORS][4];
-// Here we just declare it as extern with 6 sensors.
+// From main.c, where we store the most recently read quaternion
 extern "C" {
     extern int16_t printableQuat[NUMBER_OF_SENSORS][4];
 }

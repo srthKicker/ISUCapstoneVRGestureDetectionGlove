@@ -295,17 +295,17 @@ Do NOT pass a float array that is not a quaternion
 Uses logic FingerOriented = Inverse(WristQuaternion) * FingerQuaternion
 Thus it orients the quaternion to the wrist by dewinding the
 */
-static void orientFinger(float *wQint, float *fQ, int16_t sensorIndex) {
+static void orientFinger(float *wQ, float *fQ, int16_t sensorIndex) {
 
     float inv[4]; //inverse wrist quaternion
-    inv[0] =  wQint[0];///QUAT_SCALING_FACTOR;
-    inv[1] = -wQint[1];///QUAT_SCALING_FACTOR;
-    inv[2] = -wQint[2];///QUAT_SCALING_FACTOR;
-    inv[3] = -wQint[3];///QUAT_SCALING_FACTOR;
+    inv[0] =  wQ[0];///QUAT_SCALING_FACTOR;
+    inv[1] = -wQ[1];///QUAT_SCALING_FACTOR;
+    inv[2] = -wQ[2];///QUAT_SCALING_FACTOR;
+    inv[3] = -wQ[3];///QUAT_SCALING_FACTOR;
 
     float r[4]; //have to have a temp array
     
-    //This order is inv(wQ) * fQ
+    
     r[0] = inv[0]*fQ[0] - inv[1]*fQ[1] - inv[2]*fQ[2] - inv[3]*fQ[3];
     r[1] = inv[0]*fQ[1] + inv[1]*fQ[0] + inv[2]*fQ[3] - inv[3]*fQ[2];
     r[2] = inv[0]*fQ[2] - inv[1]*fQ[3] + inv[2]*fQ[0] + inv[3]*fQ[1];
@@ -322,7 +322,7 @@ static void orientFinger(float *wQint, float *fQ, int16_t sensorIndex) {
     printableQuat[sensorIndex][3] = r[3] *QUAT_SCALING_FACTOR;
     
 }
-
+//This order is inv(wQ) * fQ
 static void orientAllFingers(){
     for(int i = 0; i<4; i++){
         printableQuat[0][i] = quat[0][i] * QUAT_SCALING_FACTOR; //Directly copy the wrist over to be printed
