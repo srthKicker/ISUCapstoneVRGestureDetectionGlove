@@ -418,7 +418,7 @@ void app_main(void) {
         "Sensor Data Collection",   //Debugging Task Name
         8192,                       //Stack Size in Bytes
         NULL,                       //Task Parameters
-        5,                          //Task Priority
+        6,                          //Task Priority
         NULL,                        //Task Handle (Optional)
         0
     );
